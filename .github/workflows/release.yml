@@ -290,23 +290,39 @@ jobs:
 
       - name: Install mcp-publisher
         run: |
-          # Try npm first (more reliable)
-          npm install -g @anthropic-ai/mcp-publisher 2>/dev/null || {
-            # Fallback: download binary with explicit version
-            VERSION="1.2.0"
-            curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v${VERSION}/mcp-publisher_${VERSION}_linux_amd64.tar.gz" -o mcp-publisher.tar.gz
+          # Download latest mcp-publisher binary from GitHub releases
+          LATEST_URL=$(curl -s https://api.github.com/repos/modelcontextprotocol/registry/releases/latest | jq -r '.assets[] | select(.name | contains("linux_amd64")) | .browser_download_url')
+          if [ -n "$LATEST_URL" ] && [ "$LATEST_URL" != "null" ]; then
+            echo "Downloading latest mcp-publisher from: $LATEST_URL"
+            curl -fsSL "$LATEST_URL" -o mcp-publisher.tar.gz
             tar xzf mcp-publisher.tar.gz
             chmod +x mcp-publisher
             sudo mv mcp-publisher /usr/local/bin/
-          }
-          which mcp-publisher && mcp-publisher --version || echo "mcp-publisher installed via fallback"
+            mcp-publisher --version
+          else
+            echo "Failed to find latest release, trying v1.2.0..."
+            curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v1.2.0/mcp-publisher_1.2.0_linux_amd64.tar.gz" -o mcp-publisher.tar.gz
+            tar xzf mcp-publisher.tar.gz
+            chmod +x mcp-publisher
+            sudo mv mcp-publisher /usr/local/bin/
+          fi
+          mcp-publisher --version || echo "mcp-publisher installed"
 
       - name: Authenticate with GitHub OIDC
         run: |
           mcp-publisher login github-oidc
 
-      - name: Publish to MCP Registry
+      - name: Validate and Publish to MCP Registry
         run: |
-          echo "Publishing to MCP Registry..."
+          echo "=== server.json content ==="
+          cat server.json
+          echo ""
+          echo "=== Schema version ==="
+          jq -r '."$schema"' server.json
+          echo ""
+          echo "=== Validating server.json ==="
+          mcp-publisher validate server.json || echo "Validation returned non-zero (may be warning)"
+          echo ""
+          echo "=== Publishing to MCP Registry ==="
           mcp-publisher publish
           echo "✅ Published to MCP Registry"

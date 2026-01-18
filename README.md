@@ -1,5 +1,7 @@
 # Massive Context MCP
 
+<!-- mcp-name: io.github.egoughnour/massive-context-mcp -->
+
 [![PyPI](https://img.shields.io/pypi/v/massive-context-mcp?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/massive-context-mcp/)
 [![Tests](https://img.shields.io/github/actions/workflow/status/egoughnour/massive-context-mcp/test.yml?style=flat-square&logo=github-actions&label=Tests)](https://github.com/egoughnour/massive-context-mcp/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
