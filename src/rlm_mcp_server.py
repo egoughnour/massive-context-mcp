@@ -23,12 +23,15 @@ from mcp.types import TextContent, Tool
 
 try:
     import httpx
+
     HAS_HTTPX = True
 except ImportError:
     HAS_HTTPX = False
 
 try:
-    from claude_agent_sdk import ClaudeAgentOptions, query as claude_query
+    from claude_agent_sdk import ClaudeAgentOptions
+    from claude_agent_sdk import query as claude_query
+
     HAS_CLAUDE_SDK = True
 except ImportError:
     HAS_CLAUDE_SDK = False
@@ -110,9 +113,7 @@ def _check_system_requirements() -> dict:
             result["chip"] = "Apple Silicon (arm64)"
     else:
         result["issues"].append(f"Not Apple Silicon (detected: {machine})")
-        result["recommendations"].append(
-            "Apple Silicon (M1/M2/M3/M4) recommended for optimal Ollama performance"
-        )
+        result["recommendations"].append("Apple Silicon (M1/M2/M3/M4) recommended for optimal Ollama performance")
 
     # Check RAM
     try:
@@ -154,7 +155,7 @@ def _check_system_requirements() -> dict:
         else:
             result["issues"].append("Homebrew not installed")
             result["recommendations"].append(
-                "Install Homebrew first: /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+                'Install Homebrew first: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
             )
     except Exception:
         result["issues"].append("Could not check for Homebrew")
@@ -187,10 +188,7 @@ def _check_system_requirements() -> dict:
 
     # Determine if all requirements are met
     result["meets_requirements"] = (
-        result["is_macos"]
-        and result["is_apple_silicon"]
-        and result["ram_sufficient"]
-        and result["homebrew_installed"]
+        result["is_macos"] and result["is_apple_silicon"] and result["ram_sufficient"] and result["homebrew_installed"]
     )
 
     return result
@@ -333,8 +331,7 @@ async def _setup_ollama_direct(
 
         if not effective_cli:
             result["errors"].append(
-                f"Ollama CLI not found. Expected at {cli_path} or in PATH. "
-                "You may need to add it to your PATH first."
+                f"Ollama CLI not found. Expected at {cli_path} or in PATH. You may need to add it to your PATH first."
             )
             result["success"] = False
         else:
@@ -508,9 +505,7 @@ async def _setup_ollama(
                         await asyncio.sleep(2)
                     else:
                         # Fallback: try running ollama serve in background
-                        result["actions_skipped"].append(
-                            "brew services failed, try: ollama serve &"
-                        )
+                        result["actions_skipped"].append("brew services failed, try: ollama serve &")
             except Exception as e:
                 result["errors"].append(f"Failed to start service: {e}")
 
@@ -549,7 +544,7 @@ async def _setup_ollama(
                         result["errors"].append(f"Failed to pull {model}: {pull_proc.stderr}")
                         result["success"] = False
                 except subprocess.TimeoutExpired:
-                    result["errors"].append(f"Model pull timed out (30 min limit)")
+                    result["errors"].append("Model pull timed out (30 min limit)")
                     result["success"] = False
                 except Exception as e:
                     result["errors"].append(f"Pull error: {e}")
@@ -583,12 +578,14 @@ async def _check_ollama_status(force_refresh: bool = False) -> dict:
 
     # Check Ollama status
     if not HAS_HTTPX:
-        cache.update({
-            "checked_at": now,
-            "running": False,
-            "models": [],
-            "default_model_available": False,
-        })
+        cache.update(
+            {
+                "checked_at": now,
+                "running": False,
+                "models": [],
+                "default_model_available": False,
+            }
+        )
         return {
             "running": False,
             "error": "httpx not installed",
@@ -611,16 +608,16 @@ async def _check_ollama_status(force_refresh: bool = False) -> dict:
             # Check if default model is available
             default_model = DEFAULT_MODELS["ollama"]
             # Handle model name variations (gemma3:12b vs gemma3:12b-instruct-q4_0)
-            default_available = any(
-                m.startswith(default_model.split(":")[0]) for m in models
-            )
+            default_available = any(m.startswith(default_model.split(":")[0]) for m in models)
 
-            cache.update({
-                "checked_at": now,
-                "running": True,
-                "models": models,
-                "default_model_available": default_available,
-            })
+            cache.update(
+                {
+                    "checked_at": now,
+                    "running": True,
+                    "models": models,
+                    "default_model_available": default_available,
+                }
+            )
 
             return {
                 "running": True,
@@ -634,12 +631,14 @@ async def _check_ollama_status(force_refresh: bool = False) -> dict:
             }
 
     except httpx.ConnectError:
-        cache.update({
-            "checked_at": now,
-            "running": False,
-            "models": [],
-            "default_model_available": False,
-        })
+        cache.update(
+            {
+                "checked_at": now,
+                "running": False,
+                "models": [],
+                "default_model_available": False,
+            }
+        )
         return {
             "running": False,
             "url": ollama_url,
@@ -650,12 +649,14 @@ async def _check_ollama_status(force_refresh: bool = False) -> dict:
             "cached": False,
         }
     except Exception as e:
-        cache.update({
-            "checked_at": now,
-            "running": False,
-            "models": [],
-            "default_model_available": False,
-        })
+        cache.update(
+            {
+                "checked_at": now,
+                "running": False,
+                "models": [],
+                "default_model_available": False,
+            }
+        )
         return {
             "running": False,
             "url": ollama_url,
@@ -712,9 +713,7 @@ def _save_context_to_disk(name: str, content: str, meta: dict) -> None:
     """Persist context to disk."""
     (CONTEXTS_DIR / f"{name}.txt").write_text(content)
     meta_without_content = {k: v for k, v in meta.items() if k != "content"}
-    (CONTEXTS_DIR / f"{name}.meta.json").write_text(
-        json.dumps(meta_without_content, indent=2)
-    )
+    (CONTEXTS_DIR / f"{name}.meta.json").write_text(json.dumps(meta_without_content, indent=2))
 
 
 def _ensure_context_loaded(name: str) -> Optional[str]:
@@ -865,10 +864,7 @@ def _chunk_content(content: str, strategy: str, size: int) -> list[str]:
         return [content[i : i + size] for i in range(0, len(content), size)]
     elif strategy == "paragraphs":
         paragraphs = re.split(r"\n\s*\n", content)
-        return [
-            "\n\n".join(paragraphs[i : i + size])
-            for i in range(0, len(paragraphs), size)
-        ]
+        return ["\n\n".join(paragraphs[i : i + size]) for i in range(0, len(paragraphs), size)]
     return []
 
 
@@ -1282,8 +1278,7 @@ async def _handle_system_check(_arguments: dict) -> list[TextContent]:
         )
     else:
         result["summary"] = (
-            f"System check: {len(result['issues'])} issue(s) found. "
-            "See 'issues' and 'recommendations' for details."
+            f"System check: {len(result['issues'])} issue(s) found. See 'issues' and 'recommendations' for details."
         )
 
     return _text_response(result)
@@ -1299,11 +1294,13 @@ async def _handle_setup_ollama(arguments: dict) -> list[TextContent]:
     # If no actions specified, just do a system check
     if not any([install, start_service, pull_model]):
         sys_check = _check_system_requirements()
-        return _text_response({
-            "message": "No actions specified. Use install=true, start_service=true, or pull_model=true.",
-            "system_check": sys_check,
-            "example": "rlm_setup_ollama(install=true, start_service=true, pull_model=true)",
-        })
+        return _text_response(
+            {
+                "message": "No actions specified. Use install=true, start_service=true, or pull_model=true.",
+                "system_check": sys_check,
+                "example": "rlm_setup_ollama(install=true, start_service=true, pull_model=true)",
+            }
+        )
 
     result = await _setup_ollama(
         install=install,
@@ -1333,23 +1330,25 @@ async def _handle_setup_ollama_direct(arguments: dict) -> list[TextContent]:
 
     # If no actions specified, show comparison
     if not any([install, start_service, pull_model]):
-        return _text_response({
-            "message": "No actions specified. Use install=true, start_service=true, or pull_model=true.",
-            "method": "direct_download",
-            "advantages": [
-                "No Homebrew required",
-                "No sudo/admin permissions needed",
-                "Fully headless automation",
-                "Works on locked-down/managed machines",
-            ],
-            "disadvantages": [
-                "Manual PATH setup needed (CLI at ~/Applications/Ollama.app/Contents/Resources/ollama)",
-                "No automatic updates",
-                "Service runs via 'ollama serve' (not a managed launchd service)",
-            ],
-            "example": "rlm_setup_ollama_direct(install=true, start_service=true, pull_model=true)",
-            "alternative": "Use rlm_setup_ollama for Homebrew-based installation if you have Homebrew",
-        })
+        return _text_response(
+            {
+                "message": "No actions specified. Use install=true, start_service=true, or pull_model=true.",
+                "method": "direct_download",
+                "advantages": [
+                    "No Homebrew required",
+                    "No sudo/admin permissions needed",
+                    "Fully headless automation",
+                    "Works on locked-down/managed machines",
+                ],
+                "disadvantages": [
+                    "Manual PATH setup needed (CLI at ~/Applications/Ollama.app/Contents/Resources/ollama)",
+                    "No automatic updates",
+                    "Service runs via 'ollama serve' (not a managed launchd service)",
+                ],
+                "example": "rlm_setup_ollama_direct(install=true, start_service=true, pull_model=true)",
+                "alternative": "Use rlm_setup_ollama for Homebrew-based installation if you have Homebrew",
+            }
+        )
 
     result = await _setup_ollama_direct(
         install=install,
@@ -1384,7 +1383,9 @@ async def _handle_ollama_status(arguments: dict) -> list[TextContent]:
         default_model = DEFAULT_MODELS["ollama"]
         status["recommendation"] = f"Ollama is running but default model not found. Run: ollama pull {default_model}"
     else:
-        status["recommendation"] = "Ollama not available. Sub-queries will use Claude API. To enable free local inference, install Ollama and run: ollama serve"
+        status["recommendation"] = (
+            "Ollama not available. Sub-queries will use Claude API. To enable free local inference, install Ollama and run: ollama serve"
+        )
 
     # Add current best provider
     status["best_provider"] = _get_best_provider()
@@ -1402,13 +1403,15 @@ async def _handle_load_context(arguments: dict) -> list[TextContent]:
     contexts[ctx_name] = {"meta": meta, "content": content}
     _save_context_to_disk(ctx_name, content, meta)
 
-    return _text_response({
-        "status": "loaded",
-        "name": ctx_name,
-        "length": meta["length"],
-        "lines": meta["lines"],
-        "hash": content_hash,
-    })
+    return _text_response(
+        {
+            "status": "loaded",
+            "name": ctx_name,
+            "length": meta["length"],
+            "lines": meta["lines"],
+            "hash": content_hash,
+        }
+    )
 
 
 async def _handle_inspect_context(arguments: dict) -> list[TextContent]:
@@ -1447,10 +1450,7 @@ async def _handle_chunk_context(arguments: dict) -> list[TextContent]:
     content = contexts[ctx_name]["content"]
     chunks = _chunk_content(content, strategy, size)
 
-    chunk_meta = [
-        {"index": i, "length": len(chunk), "preview": chunk[:100]}
-        for i, chunk in enumerate(chunks)
-    ]
+    chunk_meta = [{"index": i, "length": len(chunk), "preview": chunk[:100]} for i, chunk in enumerate(chunks)]
 
     contexts[ctx_name]["meta"]["chunks"] = chunk_meta
     contexts[ctx_name]["chunks"] = chunks
@@ -1460,13 +1460,15 @@ async def _handle_chunk_context(arguments: dict) -> list[TextContent]:
     for i, chunk in enumerate(chunks):
         (chunk_dir / f"{i}.txt").write_text(chunk)
 
-    return _text_response({
-        "status": "chunked",
-        "name": ctx_name,
-        "strategy": strategy,
-        "chunk_count": len(chunks),
-        "chunks": chunk_meta,
-    })
+    return _text_response(
+        {
+            "status": "chunked",
+            "name": ctx_name,
+            "strategy": strategy,
+            "chunk_count": len(chunks),
+            "chunks": chunk_meta,
+        }
+    )
 
 
 async def _handle_get_chunk(arguments: dict) -> list[TextContent]:
@@ -1530,13 +1532,15 @@ async def _handle_filter_context(arguments: dict) -> list[TextContent]:
     contexts[out_name] = {"meta": meta, "content": new_content}
     _save_context_to_disk(out_name, new_content, meta)
 
-    return _text_response({
-        "status": "filtered",
-        "name": out_name,
-        "original_lines": len(lines),
-        "filtered_lines": len(filtered),
-        "length": len(new_content),
-    })
+    return _text_response(
+        {
+            "status": "filtered",
+            "name": out_name,
+            "original_lines": len(lines),
+            "filtered_lines": len(filtered),
+            "length": len(new_content),
+        }
+    )
 
 
 async def _handle_sub_query(arguments: dict) -> list[TextContent]:
@@ -1557,9 +1561,7 @@ async def _handle_sub_query(arguments: dict) -> list[TextContent]:
     if chunk_index is not None:
         chunks = contexts[ctx_name].get("chunks")
         if not chunks or chunk_index >= len(chunks):
-            return _error_response(
-                "chunk_not_available", f"Chunk {chunk_index} not available"
-            )
+            return _error_response("chunk_not_available", f"Chunk {chunk_index} not available")
         context_content = chunks[chunk_index]
     else:
         context_content = contexts[ctx_name]["content"]
@@ -1567,20 +1569,24 @@ async def _handle_sub_query(arguments: dict) -> list[TextContent]:
     result, call_error = await _make_provider_call(resolved_provider, resolved_model, query, context_content)
 
     if call_error:
-        return _text_response({
-            "error": "provider_error",
+        return _text_response(
+            {
+                "error": "provider_error",
+                "provider": resolved_provider,
+                "model": resolved_model,
+                "requested_provider": provider,
+                "message": call_error,
+            }
+        )
+
+    return _text_response(
+        {
             "provider": resolved_provider,
             "model": resolved_model,
-            "requested_provider": provider,
-            "message": call_error,
-        })
-
-    return _text_response({
-        "provider": resolved_provider,
-        "model": resolved_model,
-        "requested_provider": provider if provider == "auto" else None,
-        "response": result,
-    })
+            "requested_provider": provider if provider == "auto" else None,
+            "response": result,
+        }
+    )
 
 
 async def _handle_store_result(arguments: dict) -> list[TextContent]:
@@ -1606,11 +1612,13 @@ async def _handle_get_results(arguments: dict) -> list[TextContent]:
 
     results = [json.loads(line) for line in results_file.read_text().splitlines()]
 
-    return _text_response({
-        "name": result_name,
-        "count": len(results),
-        "results": results,
-    })
+    return _text_response(
+        {
+            "name": result_name,
+            "count": len(results),
+            "results": results,
+        }
+    )
 
 
 async def _handle_list_contexts(_arguments: dict) -> list[TextContent]:
@@ -1629,13 +1637,15 @@ async def _handle_list_contexts(_arguments: dict) -> list[TextContent]:
         disk_name = meta_file.stem.replace(".meta", "")
         if disk_name not in contexts:
             meta = json.loads(meta_file.read_text())
-            ctx_list.append({
-                "name": disk_name,
-                "length": meta["length"],
-                "lines": meta["lines"],
-                "chunked": meta.get("chunks") is not None,
-                "disk_only": True,
-            })
+            ctx_list.append(
+                {
+                    "name": disk_name,
+                    "length": meta["length"],
+                    "lines": meta["lines"],
+                    "chunked": meta.get("chunks") is not None,
+                    "disk_only": True,
+                }
+            )
 
     return _text_response({"contexts": ctx_list})
 
@@ -1675,9 +1685,7 @@ async def _handle_sub_query_batch(arguments: dict) -> list[TextContent]:
     async def process_chunk(chunk_idx: int) -> dict:
         async with semaphore:
             chunk_content = chunks[chunk_idx]
-            result, call_error = await _make_provider_call(
-                resolved_provider, resolved_model, query, chunk_content
-            )
+            result, call_error = await _make_provider_call(resolved_provider, resolved_model, query, chunk_content)
 
             if call_error:
                 return {
@@ -1698,17 +1706,19 @@ async def _handle_sub_query_batch(arguments: dict) -> list[TextContent]:
     successful = sum(1 for r in results if "response" in r)
     failed = len(results) - successful
 
-    return _text_response({
-        "status": "completed",
-        "total_chunks": len(chunk_indices),
-        "successful": successful,
-        "failed": failed,
-        "concurrency": concurrency,
-        "provider": resolved_provider,
-        "model": resolved_model,
-        "requested_provider": provider if provider == "auto" else None,
-        "results": results,
-    })
+    return _text_response(
+        {
+            "status": "completed",
+            "total_chunks": len(chunk_indices),
+            "successful": successful,
+            "failed": failed,
+            "concurrency": concurrency,
+            "provider": resolved_provider,
+            "model": resolved_model,
+            "requested_provider": provider if provider == "auto" else None,
+            "results": results,
+        }
+    )
 
 
 async def _handle_auto_analyze(arguments: dict) -> list[TextContent]:
@@ -1731,11 +1741,13 @@ async def _handle_auto_analyze(arguments: dict) -> list[TextContent]:
     strategy_config = _select_chunking_strategy(detected_type)
 
     # Chunk the content
-    chunk_result = await _handle_chunk_context({
-        "name": ctx_name,
-        "strategy": strategy_config["strategy"],
-        "size": strategy_config["size"],
-    })
+    chunk_result = await _handle_chunk_context(
+        {
+            "name": ctx_name,
+            "strategy": strategy_config["strategy"],
+            "size": strategy_config["size"],
+        }
+    )
     chunk_data = json.loads(chunk_result[0].text)
     chunk_count = chunk_data["chunk_count"]
 
@@ -1751,30 +1763,34 @@ async def _handle_auto_analyze(arguments: dict) -> list[TextContent]:
     adapted_query = _adapt_query_for_goal(goal, detected_type)
 
     # Run batch query
-    batch_result = await _handle_sub_query_batch({
-        "query": adapted_query,
-        "context_name": ctx_name,
-        "chunk_indices": chunk_indices,
-        "provider": provider,
-        "concurrency": concurrency,
-    })
+    batch_result = await _handle_sub_query_batch(
+        {
+            "query": adapted_query,
+            "context_name": ctx_name,
+            "chunk_indices": chunk_indices,
+            "provider": provider,
+            "concurrency": concurrency,
+        }
+    )
     batch_data = json.loads(batch_result[0].text)
 
-    return _text_response({
-        "status": "completed",
-        "detected_type": detected_type,
-        "confidence": confidence,
-        "strategy": strategy_config,
-        "chunk_count": chunk_count,
-        "chunks_analyzed": len(chunk_indices),
-        "sampled": sampled,
-        "goal": goal,
-        "adapted_query": adapted_query,
-        "provider": provider,
-        "successful": batch_data["successful"],
-        "failed": batch_data["failed"],
-        "results": batch_data["results"],
-    })
+    return _text_response(
+        {
+            "status": "completed",
+            "detected_type": detected_type,
+            "confidence": confidence,
+            "strategy": strategy_config,
+            "chunk_count": chunk_count,
+            "chunks_analyzed": len(chunk_indices),
+            "sampled": sampled,
+            "goal": goal,
+            "adapted_query": adapted_query,
+            "provider": provider,
+            "successful": batch_data["successful"],
+            "failed": batch_data["failed"],
+            "results": batch_data["results"],
+        }
+    )
 
 
 async def _handle_exec(arguments: dict) -> list[TextContent]:
@@ -1855,24 +1871,28 @@ except Exception as e:
                 result = result_str
 
             # Clean stdout
-            stdout = stdout[:stdout.index("__RESULT_START__")].strip()
+            stdout = stdout[: stdout.index("__RESULT_START__")].strip()
 
-        return _text_response({
-            "result": result,
-            "stdout": stdout,
-            "stderr": stderr,
-            "return_code": return_code,
-            "timed_out": False,
-        })
+        return _text_response(
+            {
+                "result": result,
+                "stdout": stdout,
+                "stderr": stderr,
+                "return_code": return_code,
+                "timed_out": False,
+            }
+        )
 
     except subprocess.TimeoutExpired:
-        return _text_response({
-            "result": None,
-            "stdout": "",
-            "stderr": f"Execution timed out after {timeout} seconds",
-            "return_code": -1,
-            "timed_out": True,
-        })
+        return _text_response(
+            {
+                "result": None,
+                "stdout": "",
+                "stderr": f"Execution timed out after {timeout} seconds",
+                "return_code": -1,
+                "timed_out": True,
+            }
+        )
     except Exception as e:
         return _error_response("execution_error", str(e))
     finally:

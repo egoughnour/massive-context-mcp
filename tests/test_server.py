@@ -13,6 +13,7 @@ TEST_DATA_DIR = tempfile.mkdtemp(prefix="rlm_test_")
 os.environ["RLM_DATA_DIR"] = TEST_DATA_DIR
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rlm_mcp_server import (
@@ -127,10 +128,12 @@ class TestLoadContext:
     @pytest.mark.asyncio
     async def test_load_context_success(self):
         """Loading a context should store it and return metadata."""
-        result = await _handle_load_context({
-            "name": "test_ctx",
-            "content": "hello\nworld",
-        })
+        result = await _handle_load_context(
+            {
+                "name": "test_ctx",
+                "content": "hello\nworld",
+            }
+        )
         parsed = json.loads(result[0].text)
 
         assert parsed["status"] == "loaded"
@@ -142,10 +145,12 @@ class TestLoadContext:
     @pytest.mark.asyncio
     async def test_load_context_stored_in_memory(self):
         """Loaded context should be accessible in memory."""
-        await _handle_load_context({
-            "name": "mem_test",
-            "content": "test content",
-        })
+        await _handle_load_context(
+            {
+                "name": "mem_test",
+                "content": "test content",
+            }
+        )
 
         assert "mem_test" in contexts
         assert contexts["mem_test"]["content"] == "test content"
@@ -157,15 +162,19 @@ class TestInspectContext:
     @pytest.mark.asyncio
     async def test_inspect_context_success(self):
         """Inspecting a loaded context should return info."""
-        await _handle_load_context({
-            "name": "inspect_test",
-            "content": "hello world " * 100,
-        })
+        await _handle_load_context(
+            {
+                "name": "inspect_test",
+                "content": "hello world " * 100,
+            }
+        )
 
-        result = await _handle_inspect_context({
-            "name": "inspect_test",
-            "preview_chars": 20,
-        })
+        result = await _handle_inspect_context(
+            {
+                "name": "inspect_test",
+                "preview_chars": 20,
+            }
+        )
         parsed = json.loads(result[0].text)
 
         assert parsed["name"] == "inspect_test"
@@ -185,16 +194,20 @@ class TestChunkContext:
     @pytest.mark.asyncio
     async def test_chunk_context_success(self):
         """Chunking a context should create chunks."""
-        await _handle_load_context({
-            "name": "chunk_test",
-            "content": "\n".join([f"line{i}" for i in range(10)]),
-        })
+        await _handle_load_context(
+            {
+                "name": "chunk_test",
+                "content": "\n".join([f"line{i}" for i in range(10)]),
+            }
+        )
 
-        result = await _handle_chunk_context({
-            "name": "chunk_test",
-            "strategy": "lines",
-            "size": 3,
-        })
+        result = await _handle_chunk_context(
+            {
+                "name": "chunk_test",
+                "strategy": "lines",
+                "size": 3,
+            }
+        )
         parsed = json.loads(result[0].text)
 
         assert parsed["status"] == "chunked"
@@ -214,39 +227,51 @@ class TestGetChunk:
     @pytest.mark.asyncio
     async def test_get_chunk_success(self):
         """Getting a chunk should return its content."""
-        await _handle_load_context({
-            "name": "get_chunk_test",
-            "content": "chunk0\nchunk0\nchunk1\nchunk1",
-        })
-        await _handle_chunk_context({
-            "name": "get_chunk_test",
-            "strategy": "lines",
-            "size": 2,
-        })
+        await _handle_load_context(
+            {
+                "name": "get_chunk_test",
+                "content": "chunk0\nchunk0\nchunk1\nchunk1",
+            }
+        )
+        await _handle_chunk_context(
+            {
+                "name": "get_chunk_test",
+                "strategy": "lines",
+                "size": 2,
+            }
+        )
 
-        result = await _handle_get_chunk({
-            "name": "get_chunk_test",
-            "chunk_index": 0,
-        })
+        result = await _handle_get_chunk(
+            {
+                "name": "get_chunk_test",
+                "chunk_index": 0,
+            }
+        )
         assert "chunk0" in result[0].text
 
     @pytest.mark.asyncio
     async def test_get_chunk_out_of_range(self):
         """Getting chunk out of range should return error."""
-        await _handle_load_context({
-            "name": "range_test",
-            "content": "test",
-        })
-        await _handle_chunk_context({
-            "name": "range_test",
-            "strategy": "lines",
-            "size": 10,
-        })
+        await _handle_load_context(
+            {
+                "name": "range_test",
+                "content": "test",
+            }
+        )
+        await _handle_chunk_context(
+            {
+                "name": "range_test",
+                "strategy": "lines",
+                "size": 10,
+            }
+        )
 
-        result = await _handle_get_chunk({
-            "name": "range_test",
-            "chunk_index": 99,
-        })
+        result = await _handle_get_chunk(
+            {
+                "name": "range_test",
+                "chunk_index": 99,
+            }
+        )
         assert "out of range" in result[0].text
 
 
@@ -256,17 +281,21 @@ class TestFilterContext:
     @pytest.mark.asyncio
     async def test_filter_keep_mode(self):
         """Filter with keep mode should keep matching lines."""
-        await _handle_load_context({
-            "name": "filter_src",
-            "content": "error: something\ninfo: data\nerror: else",
-        })
+        await _handle_load_context(
+            {
+                "name": "filter_src",
+                "content": "error: something\ninfo: data\nerror: else",
+            }
+        )
 
-        result = await _handle_filter_context({
-            "name": "filter_src",
-            "output_name": "errors_only",
-            "pattern": "error:",
-            "mode": "keep",
-        })
+        result = await _handle_filter_context(
+            {
+                "name": "filter_src",
+                "output_name": "errors_only",
+                "pattern": "error:",
+                "mode": "keep",
+            }
+        )
         parsed = json.loads(result[0].text)
 
         assert parsed["filtered_lines"] == 2
@@ -275,17 +304,21 @@ class TestFilterContext:
     @pytest.mark.asyncio
     async def test_filter_remove_mode(self):
         """Filter with remove mode should remove matching lines."""
-        await _handle_load_context({
-            "name": "filter_src2",
-            "content": "error: something\ninfo: data\nerror: else",
-        })
+        await _handle_load_context(
+            {
+                "name": "filter_src2",
+                "content": "error: something\ninfo: data\nerror: else",
+            }
+        )
 
-        result = await _handle_filter_context({
-            "name": "filter_src2",
-            "output_name": "no_errors",
-            "pattern": "error:",
-            "mode": "remove",
-        })
+        result = await _handle_filter_context(
+            {
+                "name": "filter_src2",
+                "output_name": "no_errors",
+                "pattern": "error:",
+                "mode": "remove",
+            }
+        )
         parsed = json.loads(result[0].text)
 
         assert parsed["filtered_lines"] == 1
@@ -297,24 +330,30 @@ class TestStoreAndGetResults:
     @pytest.mark.asyncio
     async def test_store_result(self):
         """Storing a result should succeed."""
-        result = await _handle_store_result({
-            "name": "test_results",
-            "result": "found something",
-            "metadata": {"chunk": 0},
-        })
+        result = await _handle_store_result(
+            {
+                "name": "test_results",
+                "result": "found something",
+                "metadata": {"chunk": 0},
+            }
+        )
         assert "stored" in result[0].text
 
     @pytest.mark.asyncio
     async def test_get_results(self):
         """Getting stored results should return all results."""
-        await _handle_store_result({
-            "name": "multi_results",
-            "result": "result1",
-        })
-        await _handle_store_result({
-            "name": "multi_results",
-            "result": "result2",
-        })
+        await _handle_store_result(
+            {
+                "name": "multi_results",
+                "result": "result1",
+            }
+        )
+        await _handle_store_result(
+            {
+                "name": "multi_results",
+                "result": "result2",
+            }
+        )
 
         result = await _handle_get_results({"name": "multi_results"})
         parsed = json.loads(result[0].text)
@@ -360,10 +399,12 @@ class TestSubQuery:
     @pytest.mark.asyncio
     async def test_sub_query_context_not_found(self):
         """Sub-query on nonexistent context should error."""
-        result = await _handle_sub_query({
-            "query": "test",
-            "context_name": "nonexistent",
-        })
+        result = await _handle_sub_query(
+            {
+                "query": "test",
+                "context_name": "nonexistent",
+            }
+        )
         parsed = json.loads(result[0].text)
         assert parsed["error"] == "context_not_found"
 
@@ -372,11 +413,13 @@ class TestSubQuery:
         """Sub-query on non-chunked context with chunk_index should error."""
         await _handle_load_context({"name": "no_chunks", "content": "test"})
 
-        result = await _handle_sub_query({
-            "query": "test",
-            "context_name": "no_chunks",
-            "chunk_index": 0,
-        })
+        result = await _handle_sub_query(
+            {
+                "query": "test",
+                "context_name": "no_chunks",
+                "chunk_index": 0,
+            }
+        )
         parsed = json.loads(result[0].text)
         assert parsed["error"] == "chunk_not_available"
 
@@ -388,11 +431,13 @@ class TestSubQuery:
         with patch("rlm_mcp_server._make_provider_call", new_callable=AsyncMock) as mock:
             mock.return_value = ("mocked response", None)
 
-            result = await _handle_sub_query({
-                "query": "what is this?",
-                "context_name": "query_test",
-                "provider": "ollama",
-            })
+            result = await _handle_sub_query(
+                {
+                    "query": "what is this?",
+                    "context_name": "query_test",
+                    "provider": "ollama",
+                }
+            )
             parsed = json.loads(result[0].text)
 
             assert parsed["response"] == "mocked response"
@@ -405,11 +450,13 @@ class TestSubQueryBatch:
     @pytest.mark.asyncio
     async def test_batch_query_context_not_found(self):
         """Batch query on nonexistent context should error."""
-        result = await _handle_sub_query_batch({
-            "query": "test",
-            "context_name": "nonexistent",
-            "chunk_indices": [0, 1],
-        })
+        result = await _handle_sub_query_batch(
+            {
+                "query": "test",
+                "context_name": "nonexistent",
+                "chunk_indices": [0, 1],
+            }
+        )
         parsed = json.loads(result[0].text)
         assert parsed["error"] == "context_not_found"
 
@@ -418,57 +465,71 @@ class TestSubQueryBatch:
         """Batch query on non-chunked context should error."""
         await _handle_load_context({"name": "not_chunked", "content": "test"})
 
-        result = await _handle_sub_query_batch({
-            "query": "test",
-            "context_name": "not_chunked",
-            "chunk_indices": [0],
-        })
+        result = await _handle_sub_query_batch(
+            {
+                "query": "test",
+                "context_name": "not_chunked",
+                "chunk_indices": [0],
+            }
+        )
         parsed = json.loads(result[0].text)
         assert parsed["error"] == "context_not_chunked"
 
     @pytest.mark.asyncio
     async def test_batch_query_invalid_indices(self):
         """Batch query with invalid indices should error."""
-        await _handle_load_context({
-            "name": "batch_test",
-            "content": "line1\nline2",
-        })
-        await _handle_chunk_context({
-            "name": "batch_test",
-            "strategy": "lines",
-            "size": 1,
-        })
+        await _handle_load_context(
+            {
+                "name": "batch_test",
+                "content": "line1\nline2",
+            }
+        )
+        await _handle_chunk_context(
+            {
+                "name": "batch_test",
+                "strategy": "lines",
+                "size": 1,
+            }
+        )
 
-        result = await _handle_sub_query_batch({
-            "query": "test",
-            "context_name": "batch_test",
-            "chunk_indices": [0, 99],
-        })
+        result = await _handle_sub_query_batch(
+            {
+                "query": "test",
+                "context_name": "batch_test",
+                "chunk_indices": [0, 99],
+            }
+        )
         parsed = json.loads(result[0].text)
         assert parsed["error"] == "invalid_chunk_indices"
 
     @pytest.mark.asyncio
     async def test_batch_query_with_mock_provider(self):
         """Batch query should process all chunks."""
-        await _handle_load_context({
-            "name": "batch_success",
-            "content": "chunk1\nchunk2\nchunk3",
-        })
-        await _handle_chunk_context({
-            "name": "batch_success",
-            "strategy": "lines",
-            "size": 1,
-        })
+        await _handle_load_context(
+            {
+                "name": "batch_success",
+                "content": "chunk1\nchunk2\nchunk3",
+            }
+        )
+        await _handle_chunk_context(
+            {
+                "name": "batch_success",
+                "strategy": "lines",
+                "size": 1,
+            }
+        )
 
         with patch("rlm_mcp_server._make_provider_call", new_callable=AsyncMock) as mock:
             mock.return_value = ("response", None)
 
-            result = await _handle_sub_query_batch({
-                "query": "analyze",
-                "context_name": "batch_success",
-                "chunk_indices": [0, 1, 2],
-                "concurrency": 2,
-            })
+            result = await _handle_sub_query_batch(
+                {
+                    "query": "analyze",
+                    "context_name": "batch_success",
+                    "chunk_indices": [0, 1, 2],
+                    "concurrency": 2,
+                }
+            )
             parsed = json.loads(result[0].text)
 
             assert parsed["status"] == "completed"

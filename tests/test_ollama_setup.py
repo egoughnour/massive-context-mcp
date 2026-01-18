@@ -17,6 +17,7 @@ TEST_DATA_DIR = tempfile.mkdtemp(prefix="rlm_test_")
 os.environ["RLM_DATA_DIR"] = TEST_DATA_DIR
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rlm_mcp_server import (
@@ -51,9 +52,17 @@ class TestCheckSystemRequirements:
         result = _check_system_requirements()
 
         expected_keys = [
-            "platform", "machine", "is_macos", "is_apple_silicon",
-            "ram_gb", "ram_sufficient", "homebrew_installed",
-            "ollama_installed", "meets_requirements", "issues", "recommendations"
+            "platform",
+            "machine",
+            "is_macos",
+            "is_apple_silicon",
+            "ram_gb",
+            "ram_sufficient",
+            "homebrew_installed",
+            "ollama_installed",
+            "meets_requirements",
+            "issues",
+            "recommendations",
         ]
         for key in expected_keys:
             assert key in result, f"Missing key: {key}"
@@ -100,6 +109,7 @@ class TestCheckSystemRequirements:
     @patch("subprocess.run")
     def test_ram_check_sufficient(self, mock_run, mock_machine, mock_system):
         """Should detect sufficient RAM (>= 16GB)."""
+
         def run_side_effect(cmd, **kwargs):
             if "hw.memsize" in cmd:
                 return MagicMock(returncode=0, stdout="34359738368\n")  # 32GB
@@ -120,6 +130,7 @@ class TestCheckSystemRequirements:
     @patch("subprocess.run")
     def test_ram_check_insufficient(self, mock_run, mock_machine, mock_system):
         """Should detect insufficient RAM (< 16GB)."""
+
         def run_side_effect(cmd, **kwargs):
             if "hw.memsize" in cmd:
                 return MagicMock(returncode=0, stdout="8589934592\n")  # 8GB
@@ -205,15 +216,11 @@ class TestCheckOllamaStatus:
     @pytest.mark.asyncio
     async def test_caches_result(self):
         """Should cache result and return cached on subsequent calls."""
-        import time
-
         with patch("rlm_mcp_server.HAS_HTTPX", True):
             with patch("httpx.AsyncClient") as mock_client:
                 mock_response = MagicMock()
                 mock_response.json.return_value = {"models": [{"name": "gemma3:12b"}]}
-                mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-                    return_value=mock_response
-                )
+                mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
                 # First call - should hit network
                 result1 = await _check_ollama_status(force_refresh=True)
@@ -235,9 +242,7 @@ class TestCheckOllamaStatus:
             with patch("httpx.AsyncClient") as mock_client:
                 mock_response = MagicMock()
                 mock_response.json.return_value = {"models": [{"name": "new_model"}]}
-                mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-                    return_value=mock_response
-                )
+                mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
                 result = await _check_ollama_status(force_refresh=True)
 
@@ -472,6 +477,7 @@ class TestSetupOllamaDirect:
 
         # Mock Path.exists() to return False for app_path but True for extracted_app
         original_exists = Path.exists
+
         def mock_exists(self):
             if "Ollama.app" in str(self) and "Applications" in str(self):
                 return False  # App not installed yet
@@ -482,7 +488,7 @@ class TestSetupOllamaDirect:
         with patch.object(Path, "exists", mock_exists):
             with patch.object(Path, "mkdir"):
                 with patch.object(Path, "unlink"):
-                    result = await _setup_ollama_direct(install=True)
+                    await _setup_ollama_direct(install=True)
 
         # Check that curl was called with the download URL
         curl_calls = [c for c in mock_run.call_args_list if "curl" in str(c)]
@@ -500,11 +506,7 @@ class TestSetupOllamaDirect:
             "ram_gb": 32.0,
             "ram_sufficient": True,
         }
-        mock_run.return_value = MagicMock(
-            returncode=1,
-            stdout="",
-            stderr="curl: (7) Failed to connect"
-        )
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="curl: (7) Failed to connect")
 
         with patch.object(Path, "exists", return_value=False):
             with patch.object(Path, "mkdir"):
@@ -556,12 +558,14 @@ class TestHandleSetupOllama:
             "errors": [],
         }
 
-        await _handle_setup_ollama({
-            "install": True,
-            "start_service": True,
-            "pull_model": True,
-            "model": "gemma3:4b",
-        })
+        await _handle_setup_ollama(
+            {
+                "install": True,
+                "start_service": True,
+                "pull_model": True,
+                "model": "gemma3:4b",
+            }
+        )
 
         mock_setup.assert_called_once_with(
             install=True,
