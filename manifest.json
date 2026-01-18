@@ -18,6 +18,8 @@
     "type": "uv",
     "entry_point": "src/rlm_mcp_server.py",
     "mcp_config": {
+       "command": "uvx",
+      "args": ["--from", "git+https://github.com/egoughnour/massive-context-mcp", "massive-context-mcp"],
       "env": {
         "RLM_DATA_DIR": "${user_config.rlm_data_dir}",
         "OLLAMA_URL": "${user_config.ollama_url}"
