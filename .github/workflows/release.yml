@@ -162,28 +162,32 @@ jobs:
 
             See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
 
-  # Optional: Publish to MCP Registry
-  # Uncomment when ready to publish to the official registry
-  #
-  # publish-registry:
-  #   needs: release
-  #   runs-on: ubuntu-latest
-  #   if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     - name: Download mcp-publisher
-  #       run: |
-  #         # Download latest mcp-publisher from GitHub releases
-  #         curl -L -o mcp-publisher https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher-linux-amd64
-  #         chmod +x mcp-publisher
-  #
-  #     - name: Authenticate with GitHub
-  #       run: |
-  #         ./mcp-publisher login github
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #
-  #     - name: Publish to MCP Registry
-  #       run: |
-  #         ./mcp-publisher publish
+  # Publish to MCP Registry using OIDC authentication
+  publish-registry:
+    needs: release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+    permissions:
+      id-token: write  # Required for OIDC authentication
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download mcp-publisher
+        run: |
+          # Download latest mcp-publisher from GitHub releases
+          curl -fsSL -o mcp-publisher https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher-linux-amd64
+          chmod +x mcp-publisher
+          ./mcp-publisher --version || echo "mcp-publisher ready"
+
+      - name: Authenticate with GitHub OIDC
+        run: |
+          # Use GitHub Actions OIDC for passwordless authentication
+          # This works because server.json uses io.github.egoughnour/... naming
+          ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: |
+          echo "Publishing to MCP Registry..."
+          ./mcp-publisher publish
+          echo "✅ Published to MCP Registry"
