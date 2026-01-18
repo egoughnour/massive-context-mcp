@@ -1,5 +1,10 @@
 # Massive Context MCP
 
+[![GitHub Release](https://img.shields.io/github/v/release/egoughnour/massive-context-mcp?style=flat-square&logo=github&label=Release)](https://github.com/egoughnour/massive-context-mcp/releases/latest)
+[![Tests](https://img.shields.io/github/actions/workflow/status/egoughnour/massive-context-mcp/test.yml?style=flat-square&logo=github-actions&label=Tests)](https://github.com/egoughnour/massive-context-mcp/actions/workflows/test.yml)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-massive--context--mcp-blue?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0wIDE4Yy00LjQxIDAtOC0zLjU5LTgtOHMzLjU5LTggOC04IDggMy41OSA4IDgtMy41OSA4LTggOHoiLz48L3N2Zz4=)](https://registry.modelcontextprotocol.io/servers/io.github.egoughnour/massive-context-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+
 Handle massive contexts (10M+ tokens) with chunking, sub-queries, and free local inference via Ollama.
 
 Based on the [Recursive Language Model pattern](https://arxiv.org/html/2512.24601v1). Inspired by [richardwhiteii/rlm](https://github.com/richardwhiteii/rlm).
