@@ -28,11 +28,7 @@
   "server": {
     "mcpConfig": {
       "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/egoughnour/massive-context-mcp",
-        "massive-context-mcp"
-      ],
+      "args": ["massive-context-mcp"],
       "env": {
         "RLM_DATA_DIR": "${HOME}/.rlm-data",
         "OLLAMA_URL": "http://localhost:11434"
@@ -41,19 +37,13 @@
   },
   "packages": [
     {
-      "registryBaseUrl": "https://github.com",
-      "registryType": "mcpb",
-      "identifier": "egoughnour/massive-context-mcp",
+      "registryBaseUrl": "https://pypi.org",
+      "registryType": "pypi",
+      "identifier": "massive-context-mcp",
       "version": "1.0.0",
       "transport": {
         "type": "stdio"
-      },
-      "assets": [
-        {
-          "name": "massive-context-mcp-{version}.mcpb",
-          "type": "mcpb"
-        }
-      ]
+      }
     }
   ],
   "tools": [
