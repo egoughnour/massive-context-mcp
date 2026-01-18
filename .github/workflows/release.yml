@@ -179,8 +179,12 @@ jobs:
           LATEST=$(curl -sI https://github.com/modelcontextprotocol/registry/releases/latest | grep -i '^location:' | sed 's/.*tag\/v//' | tr -d '\r\n')
           echo "Latest mcp-publisher version: $LATEST"
 
-          # Download and extract
-          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v${LATEST}/mcp-publisher_${LATEST}_linux_amd64.tar.gz" -o mcp-publisher.tar.gz
+          # Download and extract (using documented URL format)
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+          URL="https://github.com/modelcontextprotocol/registry/releases/download/v1.2.0/mcp-publisher_1.2.0_linux_amd64.tar.gz"
+          echo "Downloading from: $URL"
+          curl -fsSL "$URL" -o mcp-publisher.tar.gz
           tar xzf mcp-publisher.tar.gz
           chmod +x mcp-publisher
           ./mcp-publisher --version
