@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.egoughnour/massive-context-mcp",
-  "display_name": "Massive Context MCP",
+  "displayName": "Massive Context MCP",
   "description": "Handles 10M+ token contexts with chunking, sub-queries, and local Ollama inference.",
   "version": "1.0.0",
   "homepage": "https://github.com/egoughnour/massive-context-mcp",
@@ -26,7 +26,7 @@
     "context-management"
   ],
   "server": {
-    "mcp_config": {
+    "mcpConfig": {
       "command": "uvx",
       "args": [
         "--from",
