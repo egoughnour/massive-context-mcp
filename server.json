@@ -1,5 +1,5 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.egoughnour/massive-context-mcp",
   "display_name": "Massive Context MCP",
   "description": "Handle 10M+ token contexts with chunking, sub-queries, and local Ollama inference. Based on the RLM pattern from arxiv.org/html/2512.24601v1.",
