@@ -1115,16 +1115,8 @@ async def rlm_ollama_status(force_refresh: bool = False) -> dict:
     return status
 
 
-@mcp.tool()
-async def rlm_load_context(name: str, content: str) -> dict:
-    """Load a large context as an external variable.
-
-    Returns metadata without the content itself.
-
-    Args:
-        name: Identifier for this context
-        content: The full context content
-    """
+async def _load_context_impl(name: str, content: str) -> dict:
+    """Implementation of context loading."""
     content_hash = _hash_content(content)
     meta = _context_summary(name, content, hash=content_hash, chunks=None)
     contexts[name] = {"meta": meta, "content": content}
@@ -1137,6 +1129,19 @@ async def rlm_load_context(name: str, content: str) -> dict:
         "lines": meta["lines"],
         "hash": content_hash,
     }
+
+
+@mcp.tool()
+async def rlm_load_context(name: str, content: str) -> dict:
+    """Load a large context as an external variable.
+
+    Returns metadata without the content itself.
+
+    Args:
+        name: Identifier for this context
+        content: The full context content
+    """
+    return await _load_context_impl(name, content)
 
 
 @mcp.tool()
@@ -1164,19 +1169,12 @@ async def rlm_inspect_context(name: str, preview_chars: int = 500) -> dict:
     )
 
 
-@mcp.tool()
-async def rlm_chunk_context(
+async def _chunk_context_impl(
     name: str,
     strategy: str = "lines",
     size: int = 100,
 ) -> dict:
-    """Chunk a loaded context by strategy. Returns chunk metadata, not full content.
-
-    Args:
-        name: Context identifier
-        strategy: Chunking strategy - 'lines', 'chars', or 'paragraphs'
-        size: Chunk size (lines/chars depending on strategy)
-    """
+    """Implementation of context chunking."""
     error = _ensure_context_loaded(name)
     if error:
         return {"error": "context_not_found", "message": error}
@@ -1201,6 +1199,22 @@ async def rlm_chunk_context(
         "chunk_count": len(chunks),
         "chunks": chunk_meta,
     }
+
+
+@mcp.tool()
+async def rlm_chunk_context(
+    name: str,
+    strategy: str = "lines",
+    size: int = 100,
+) -> dict:
+    """Chunk a loaded context by strategy. Returns chunk metadata, not full content.
+
+    Args:
+        name: Context identifier
+        strategy: Chunking strategy - 'lines', 'chars', or 'paragraphs'
+        size: Chunk size (lines/chars depending on strategy)
+    """
+    return await _chunk_context_impl(name, strategy, size)
 
 
 @mcp.tool()
@@ -1403,8 +1417,7 @@ async def rlm_list_contexts() -> dict:
     return {"contexts": ctx_list}
 
 
-@mcp.tool()
-async def rlm_sub_query_batch(
+async def _sub_query_batch_impl(
     query: str,
     context_name: str,
     chunk_indices: list[int],
@@ -1412,16 +1425,7 @@ async def rlm_sub_query_batch(
     model: Optional[str] = None,
     concurrency: int = 4,
 ) -> dict:
-    """Process multiple chunks in parallel. Respects concurrency limit to manage system resources.
-
-    Args:
-        query: Question/instruction for each sub-call
-        context_name: Context identifier
-        chunk_indices: List of chunk indices to process
-        provider: LLM provider - 'auto', 'ollama', or 'claude-sdk'
-        model: Model to use (provider-specific defaults apply)
-        concurrency: Max parallel requests (default 4, max 8)
-    """
+    """Implementation of batch sub-query processing."""
     concurrency = min(concurrency, 8)
 
     # Resolve auto provider and model once for the entire batch
@@ -1482,6 +1486,28 @@ async def rlm_sub_query_batch(
 
 
 @mcp.tool()
+async def rlm_sub_query_batch(
+    query: str,
+    context_name: str,
+    chunk_indices: list[int],
+    provider: str = "auto",
+    model: Optional[str] = None,
+    concurrency: int = 4,
+) -> dict:
+    """Process multiple chunks in parallel. Respects concurrency limit to manage system resources.
+
+    Args:
+        query: Question/instruction for each sub-call
+        context_name: Context identifier
+        chunk_indices: List of chunk indices to process
+        provider: LLM provider - 'auto', 'ollama', or 'claude-sdk'
+        model: Model to use (provider-specific defaults apply)
+        concurrency: Max parallel requests (default 4, max 8)
+    """
+    return await _sub_query_batch_impl(query, context_name, chunk_indices, provider, model, concurrency)
+
+
+@mcp.tool()
 async def rlm_auto_analyze(
     name: str,
     content: str,
@@ -1502,8 +1528,8 @@ async def rlm_auto_analyze(
     """
     concurrency = min(concurrency, 8)
 
-    # Load the content
-    await rlm_load_context(name=name, content=content)
+    # Load the content (call implementation directly, not the tool)
+    await _load_context_impl(name=name, content=content)
 
     # Detect content type
     detection = _detect_content_type(content)
@@ -1513,8 +1539,8 @@ async def rlm_auto_analyze(
     # Select chunking strategy
     strategy_config = _select_chunking_strategy(detected_type)
 
-    # Chunk the content
-    chunk_result = await rlm_chunk_context(
+    # Chunk the content (call implementation directly, not the tool)
+    chunk_result = await _chunk_context_impl(
         name=name,
         strategy=strategy_config["strategy"],
         size=strategy_config["size"],
@@ -1532,8 +1558,8 @@ async def rlm_auto_analyze(
     # Adapt query for goal and content type
     adapted_query = _adapt_query_for_goal(goal, detected_type)
 
-    # Run batch query
-    batch_result = await rlm_sub_query_batch(
+    # Run batch query (call implementation directly, not the tool)
+    batch_result = await _sub_query_batch_impl(
         query=adapted_query,
         context_name=name,
         chunk_indices=chunk_indices,
