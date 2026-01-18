@@ -24,14 +24,32 @@ from rlm_mcp_server import (
 # Import FastMCP tool wrappers and extract underlying functions
 from rlm_mcp_server import (
     rlm_chunk_context as _rlm_chunk_context_tool,
+)
+from rlm_mcp_server import (
     rlm_filter_context as _rlm_filter_context_tool,
+)
+from rlm_mcp_server import (
     rlm_get_chunk as _rlm_get_chunk_tool,
+)
+from rlm_mcp_server import (
     rlm_get_results as _rlm_get_results_tool,
+)
+from rlm_mcp_server import (
     rlm_inspect_context as _rlm_inspect_context_tool,
+)
+from rlm_mcp_server import (
     rlm_list_contexts as _rlm_list_contexts_tool,
+)
+from rlm_mcp_server import (
     rlm_load_context as _rlm_load_context_tool,
+)
+from rlm_mcp_server import (
     rlm_store_result as _rlm_store_result_tool,
+)
+from rlm_mcp_server import (
     rlm_sub_query as _rlm_sub_query_tool,
+)
+from rlm_mcp_server import (
     rlm_sub_query_batch as _rlm_sub_query_batch_tool,
 )
 

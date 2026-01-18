@@ -1223,7 +1223,10 @@ async def rlm_get_chunk(name: str, chunk_index: int) -> str | dict:
         return {"error": "context_not_chunked", "message": f"Context '{name}' has not been chunked yet"}
 
     if chunk_index >= len(chunks):
-        return {"error": "chunk_out_of_range", "message": f"Chunk index {chunk_index} out of range (max {len(chunks) - 1})"}
+        return {
+            "error": "chunk_out_of_range",
+            "message": f"Chunk index {chunk_index} out of range (max {len(chunks) - 1})",
+        }
 
     return chunks[chunk_index]
 
@@ -1434,7 +1437,10 @@ async def rlm_sub_query_batch(
 
     invalid_indices = [idx for idx in chunk_indices if idx >= len(chunks)]
     if invalid_indices:
-        return {"error": "invalid_chunk_indices", "message": f"Invalid chunk indices: {invalid_indices} (max: {len(chunks) - 1})"}
+        return {
+            "error": "invalid_chunk_indices",
+            "message": f"Invalid chunk indices: {invalid_indices} (max: {len(chunks) - 1})",
+        }
 
     semaphore = asyncio.Semaphore(concurrency)
 
