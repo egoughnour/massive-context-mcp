@@ -4,7 +4,6 @@ These tests verify the setup tools work correctly without actually
 installing anything - they mock subprocess calls and network requests.
 """
 
-import json
 import os
 import tempfile
 from pathlib import Path
@@ -32,8 +31,14 @@ from rlm_mcp_server import (
 # Import FastMCP tool wrappers and extract underlying functions
 from rlm_mcp_server import (
     rlm_ollama_status as _rlm_ollama_status_tool,
+)
+from rlm_mcp_server import (
     rlm_setup_ollama as _rlm_setup_ollama_tool,
+)
+from rlm_mcp_server import (
     rlm_setup_ollama_direct as _rlm_setup_ollama_direct_tool,
+)
+from rlm_mcp_server import (
     rlm_system_check as _rlm_system_check_tool,
 )
 
