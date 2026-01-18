@@ -24,14 +24,24 @@ from rlm_mcp_server import (
     _check_ollama_status,
     _check_system_requirements,
     _get_best_provider,
-    _handle_ollama_status,
-    _handle_setup_ollama,
-    _handle_setup_ollama_direct,
-    _handle_system_check,
     _ollama_status_cache,
     _setup_ollama,
     _setup_ollama_direct,
 )
+
+# Import FastMCP tool wrappers and extract underlying functions
+from rlm_mcp_server import (
+    rlm_ollama_status as _rlm_ollama_status_tool,
+    rlm_setup_ollama as _rlm_setup_ollama_tool,
+    rlm_setup_ollama_direct as _rlm_setup_ollama_direct_tool,
+    rlm_system_check as _rlm_system_check_tool,
+)
+
+# FastMCP wraps functions in FunctionTool objects - extract the underlying fn
+rlm_ollama_status = _rlm_ollama_status_tool.fn
+rlm_setup_ollama = _rlm_setup_ollama_tool.fn
+rlm_setup_ollama_direct = _rlm_setup_ollama_direct_tool.fn
+rlm_system_check = _rlm_system_check_tool.fn
 
 
 @pytest.fixture(autouse=True)
@@ -144,17 +154,16 @@ class TestCheckSystemRequirements:
         assert any("Insufficient RAM" in issue for issue in result["issues"])
 
 
-class TestHandleSystemCheck:
-    """Tests for the rlm_system_check tool handler."""
+class TestRlmSystemCheck:
+    """Tests for the rlm_system_check tool."""
 
     @pytest.mark.asyncio
-    async def test_returns_json_response(self):
-        """Should return valid JSON response."""
-        result = await _handle_system_check({})
+    async def test_returns_dict_response(self):
+        """Should return dict with summary."""
+        result = await rlm_system_check()
 
-        assert len(result) == 1
-        parsed = json.loads(result[0].text)
-        assert "summary" in parsed
+        assert isinstance(result, dict)
+        assert "summary" in result
 
     @pytest.mark.asyncio
     @patch("rlm_mcp_server._check_system_requirements")
@@ -173,11 +182,10 @@ class TestHandleSystemCheck:
             "recommendations": [],
         }
 
-        result = await _handle_system_check({})
-        parsed = json.loads(result[0].text)
+        result = await rlm_system_check()
 
-        assert "ready" in parsed["summary"].lower()
-        assert "32.0GB" in parsed["summary"]
+        assert "ready" in result["summary"].lower()
+        assert "32.0GB" in result["summary"]
 
     @pytest.mark.asyncio
     @patch("rlm_mcp_server._check_system_requirements")
@@ -195,10 +203,9 @@ class TestHandleSystemCheck:
             "recommendations": ["Use macOS", "Get more RAM"],
         }
 
-        result = await _handle_system_check({})
-        parsed = json.loads(result[0].text)
+        result = await rlm_system_check()
 
-        assert "2 issue" in parsed["summary"]
+        assert "2 issue" in result["summary"]
 
 
 class TestCheckOllamaStatus:
@@ -267,8 +274,8 @@ class TestCheckOllamaStatus:
                 assert "ollama serve" in result["message"]
 
 
-class TestHandleOllamaStatus:
-    """Tests for the rlm_ollama_status tool handler."""
+class TestRlmOllamaStatus:
+    """Tests for the rlm_ollama_status tool."""
 
     @pytest.mark.asyncio
     async def test_returns_recommendation_when_ready(self):
@@ -285,11 +292,10 @@ class TestHandleOllamaStatus:
                 "default_model_available": True,
             }
 
-            result = await _handle_ollama_status({"force_refresh": False})
-            parsed = json.loads(result[0].text)
+            result = await rlm_ollama_status(force_refresh=False)
 
-            assert "ready" in parsed["recommendation"].lower()
-            assert parsed["best_provider"] == "ollama"
+            assert "ready" in result["recommendation"].lower()
+            assert result["best_provider"] == "ollama"
 
     @pytest.mark.asyncio
     async def test_returns_recommendation_when_not_running(self):
@@ -301,11 +307,10 @@ class TestHandleOllamaStatus:
                 "default_model_available": False,
             }
 
-            result = await _handle_ollama_status({"force_refresh": True})
-            parsed = json.loads(result[0].text)
+            result = await rlm_ollama_status(force_refresh=True)
 
-            assert "not available" in parsed["recommendation"].lower()
-            assert parsed["best_provider"] == "claude-sdk"
+            assert "not available" in result["recommendation"].lower()
+            assert result["best_provider"] == "claude-sdk"
 
 
 class TestGetBestProvider:
@@ -535,17 +540,16 @@ class TestSetupOllamaDirect:
         assert any("Insufficient RAM" in err for err in result["errors"])
 
 
-class TestHandleSetupOllama:
-    """Tests for the rlm_setup_ollama tool handler."""
+class TestRlmSetupOllama:
+    """Tests for the rlm_setup_ollama tool."""
 
     @pytest.mark.asyncio
     async def test_no_actions_returns_help(self):
         """Should return help message when no actions specified."""
-        result = await _handle_setup_ollama({})
-        parsed = json.loads(result[0].text)
+        result = await rlm_setup_ollama()
 
-        assert "No actions specified" in parsed["message"]
-        assert "example" in parsed
+        assert "No actions specified" in result["message"]
+        assert "example" in result
 
     @pytest.mark.asyncio
     @patch("rlm_mcp_server._setup_ollama", new_callable=AsyncMock)
@@ -558,13 +562,11 @@ class TestHandleSetupOllama:
             "errors": [],
         }
 
-        await _handle_setup_ollama(
-            {
-                "install": True,
-                "start_service": True,
-                "pull_model": True,
-                "model": "gemma3:4b",
-            }
+        await rlm_setup_ollama(
+            install=True,
+            start_service=True,
+            pull_model=True,
+            model="gemma3:4b",
         )
 
         mock_setup.assert_called_once_with(
@@ -575,19 +577,18 @@ class TestHandleSetupOllama:
         )
 
 
-class TestHandleSetupOllamaDirect:
-    """Tests for the rlm_setup_ollama_direct tool handler."""
+class TestRlmSetupOllamaDirect:
+    """Tests for the rlm_setup_ollama_direct tool."""
 
     @pytest.mark.asyncio
     async def test_no_actions_returns_comparison(self):
         """Should return comparison info when no actions specified."""
-        result = await _handle_setup_ollama_direct({})
-        parsed = json.loads(result[0].text)
+        result = await rlm_setup_ollama_direct()
 
-        assert "No actions specified" in parsed["message"]
-        assert "advantages" in parsed
-        assert "disadvantages" in parsed
-        assert "No Homebrew required" in parsed["advantages"]
+        assert "No actions specified" in result["message"]
+        assert "advantages" in result
+        assert "disadvantages" in result
+        assert "No Homebrew required" in result["advantages"]
 
     @pytest.mark.asyncio
     @patch("rlm_mcp_server._setup_ollama_direct", new_callable=AsyncMock)
@@ -603,10 +604,9 @@ class TestHandleSetupOllamaDirect:
             },
         }
 
-        result = await _handle_setup_ollama_direct({"install": True})
-        parsed = json.loads(result[0].text)
+        result = await rlm_setup_ollama_direct(install=True)
 
-        assert "PATH" in parsed["summary"]
+        assert "PATH" in result["summary"]
 
 
 class TestEdgeCases:
