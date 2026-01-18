@@ -6,12 +6,12 @@
     "url": "https://github.com/egoughnour/massive-context-mcp",
     "source": "github"
   },
-  "version": "1.0.0",
+  "version": "2.0.2",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "massive-context-mcp",
-      "version": "1.0.0",
+      "version": "2.0.2",
       "transport": {
         "type": "stdio"
       },
