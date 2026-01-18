@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 Handle massive contexts (10M+ tokens) with chunking, sub-queries, and free local inference via Ollama.
-
+![Tools in Claude Desktop](assets/tool_selection.png)
 Based on the [Recursive Language Model pattern](https://arxiv.org/html/2512.24601v1). Inspired by [richardwhiteii/rlm](https://github.com/richardwhiteii/rlm).
 
 ## Core Idea
