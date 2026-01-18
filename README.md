@@ -1,8 +1,7 @@
 # Massive Context MCP
 
-[![GitHub Release](https://img.shields.io/github/v/release/egoughnour/massive-context-mcp?style=flat-square&logo=github&label=Release)](https://github.com/egoughnour/massive-context-mcp/releases/latest)
+[![PyPI](https://img.shields.io/pypi/v/massive-context-mcp?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/massive-context-mcp/)
 [![Tests](https://img.shields.io/github/actions/workflow/status/egoughnour/massive-context-mcp/test.yml?style=flat-square&logo=github-actions&label=Tests)](https://github.com/egoughnour/massive-context-mcp/actions/workflows/test.yml)
-[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue?style=flat-square)](https://registry.modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 Handle massive contexts (10M+ tokens) with chunking, sub-queries, and free local inference via Ollama.
@@ -22,11 +21,19 @@ Instead of feeding massive contexts directly into the LLM:
 
 ### Installation
 
-**Option 1: MCPB Bundle (Recommended)**
+**Option 1: PyPI (Recommended)**
 
-Download the latest `.mcpb` from [Releases](https://github.com/egoughnour/massive-context-mcp/releases) and install via Claude Desktop or your MCP client.
+```bash
+uvx massive-context-mcp
+# or
+pip install massive-context-mcp
+```
 
-**Option 2: From Source**
+**Option 2: Claude Desktop One-Click**
+
+Download the `.mcpb` from [Releases](https://github.com/egoughnour/massive-context-mcp/releases) and double-click to install.
+
+**Option 3: From Source**
 
 ```bash
 git clone https://github.com/egoughnour/massive-context-mcp.git
@@ -34,47 +41,19 @@ cd massive-context-mcp
 uv sync
 ```
 
-Or with pip:
-```bash
-pip install git+https://github.com/egoughnour/massive-context-mcp.git
-```
+### Wire to Claude Code / Claude Desktop
 
-### Wire to Claude Code
-
-First, find your installation path:
-```bash
-cd massive-context-mcp && pwd
-# Example output: /Users/your_username/projects/massive-context-mcp
-```
-
-Add to `~/.claude/.mcp.json`, replacing the example paths with your own:
+Add to `~/.claude/.mcp.json` (Claude Code) or `claude_desktop_config.json` (Claude Desktop):
 
 ```json
 {
   "mcpServers": {
     "massive-context": {
-      "command": "uv",
-      "args": ["run", "--directory", "/Users/your_username/projects/massive-context-mcp", "python", "-m", "src.rlm_mcp_server"],
+      "command": "uvx",
+      "args": ["massive-context-mcp"],
       "env": {
-        "RLM_DATA_DIR": "/Users/your_username/.rlm-data"
-      }
-    }
-  }
-}
-```
-
-> **Note**: Replace `/Users/your_username/projects/rlm` with the output from `pwd` above. The `RLM_DATA_DIR` is where RLM stores contexts and results — you can use any directory you prefer.
-
-**Alternative** (if not using uv):
-```json
-{
-  "mcpServers": {
-    "rlm": {
-      "command": "/Users/your_username/projects/rlm/.venv/bin/python",
-      "args": ["-m", "src.rlm_mcp_server"],
-      "cwd": "/Users/your_username/projects/rlm",
-      "env": {
-        "RLM_DATA_DIR": "/Users/your_username/.rlm-data"
+        "RLM_DATA_DIR": "~/.rlm-data",
+        "OLLAMA_URL": "http://localhost:11434"
       }
     }
   }

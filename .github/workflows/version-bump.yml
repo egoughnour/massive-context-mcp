@@ -1,0 +1,131 @@
+name: Version Bump
+
+# Manual trigger only - you control when versions bump
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      skip_tests:
+        description: 'Skip tests (use for urgent fixes only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    if: ${{ !inputs.skip_tests }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install and test
+        run: |
+          uv pip install --system -e ".[dev]"
+          pytest tests/ -x -q
+
+  bump:
+    needs: [test]
+    if: ${{ always() && (needs.test.result == 'success' || inputs.skip_tests) }}
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      old_version: ${{ steps.bump.outputs.old_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate new version
+        id: bump
+        run: |
+          # Get current version from pyproject.toml
+          CURRENT=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "old_version=$CURRENT" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT"
+
+          # Parse semver
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          # Bump based on type
+          case "${{ inputs.bump_type }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Update all version files
+        run: |
+          VERSION="${{ steps.bump.outputs.new_version }}"
+
+          # Update pyproject.toml
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+
+          # Update manifest.json
+          jq --arg v "$VERSION" '.version = $v' manifest.json > tmp.json && mv tmp.json manifest.json
+
+          # Update server.json (both top-level and in packages array)
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > tmp.json && mv tmp.json server.json
+
+          echo "Updated versions:"
+          grep '^version' pyproject.toml
+          jq '.version' manifest.json
+          jq '.version, .packages[0].version' server.json
+
+      - name: Commit and tag
+        run: |
+          VERSION="${{ steps.bump.outputs.new_version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add pyproject.toml manifest.json server.json
+          git commit -m "chore(release): v${VERSION}"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+
+      - name: Push
+        run: |
+          git push origin main
+          git push origin "v${{ steps.bump.outputs.new_version }}"
+
+      - name: Summary
+        run: |
+          echo "## Version Bump Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Old version:** ${{ steps.bump.outputs.old_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **New version:** ${{ steps.bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Bump type:** ${{ inputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The release workflow will now build and publish automatically." >> $GITHUB_STEP_SUMMARY

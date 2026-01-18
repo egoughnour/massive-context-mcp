@@ -4,6 +4,8 @@ RLM MCP Server - Recursive Language Model patterns for massive context handling.
 
 Implements the core insight from https://arxiv.org/html/2512.24601v1:
 Treat context as external variable, chunk programmatically, sub-call recursively.
+
+Refactored to use FastMCP for cleaner tool definitions and PyPI distribution.
 """
 
 import asyncio
@@ -17,9 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from fastmcp import FastMCP
 
 try:
     import httpx
@@ -48,7 +48,11 @@ for directory in [CONTEXTS_DIR, CHUNKS_DIR, RESULTS_DIR]:
 # In-memory context storage (also persisted to disk)
 contexts: dict[str, dict] = {}
 
-server = Server("rlm")
+# Initialize FastMCP server
+mcp = FastMCP(
+    "massive-context-mcp",
+    description="Handle 10M+ token contexts with chunking, sub-queries, and local Ollama inference",
+)
 
 # Default models per provider
 DEFAULT_MODELS = {
@@ -68,6 +72,11 @@ _ollama_status_cache: dict[str, Any] = {
 # Minimum RAM required for gemma3:12b (model needs ~8GB, system needs headroom)
 MIN_RAM_GB = 16
 GEMMA3_12B_RAM_GB = 8
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
 
 
 def _check_system_requirements() -> dict:
@@ -730,18 +739,6 @@ def _ensure_context_loaded(name: str) -> Optional[str]:
     return f"Context '{name}' not found"
 
 
-def _text_response(data: Any) -> list[TextContent]:
-    """Create a JSON text response."""
-    if isinstance(data, str):
-        return [TextContent(type="text", text=data)]
-    return [TextContent(type="text", text=json.dumps(data, indent=2))]
-
-
-def _error_response(code: str, message: str) -> list[TextContent]:
-    """Create a structured error response."""
-    return _text_response({"error": code, "message": message})
-
-
 def _context_summary(name: str, content: str, **extra: Any) -> dict:
     """Build a common context summary dict."""
     summary = {
@@ -751,21 +748,6 @@ def _context_summary(name: str, content: str, **extra: Any) -> dict:
     }
     summary.update(extra)
     return summary
-
-
-# Shared schema fragments for tool definitions
-PROVIDER_SCHEMA = {
-    "type": "string",
-    "enum": ["auto", "ollama", "claude-sdk"],
-    "description": "LLM provider for sub-call. 'auto' prefers Ollama if available (free local inference)",
-    "default": "auto",
-}
-
-PROVIDER_SCHEMA_CLAUDE_DEFAULT = {
-    **PROVIDER_SCHEMA,
-    "description": "LLM provider for sub-calls. 'auto' prefers Ollama if available",
-    "default": "auto",
-}
 
 
 async def _call_ollama(query: str, context_content: str, model: str) -> tuple[Optional[str], Optional[str]]:
@@ -971,303 +953,18 @@ def _adapt_query_for_goal(goal: str, content_type: str) -> str:
     return templates.get(content_type, templates.get("default", f"Analyze this content for: {goal}"))
 
 
-# Tool definitions
-TOOL_DEFINITIONS = [
-    Tool(
-        name="rlm_system_check",
-        description="Check if system meets requirements for Ollama with gemma3:12b. Verifies: macOS, Apple Silicon (M1/M2/M3/M4), 16GB+ RAM, Homebrew installed. Use before attempting Ollama setup.",
-        inputSchema={
-            "type": "object",
-            "properties": {},
-        },
-    ),
-    Tool(
-        name="rlm_setup_ollama",
-        description="Install Ollama via Homebrew (macOS). Requires Homebrew pre-installed. Uses 'brew install' and 'brew services'. PROS: Auto-updates, pre-built binaries, managed service. CONS: Requires Homebrew, may prompt for sudo on first Homebrew install.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "install": {
-                    "type": "boolean",
-                    "description": "Install Ollama via Homebrew (requires Homebrew)",
-                    "default": False,
-                },
-                "start_service": {
-                    "type": "boolean",
-                    "description": "Start Ollama as a background service via brew services",
-                    "default": False,
-                },
-                "pull_model": {
-                    "type": "boolean",
-                    "description": "Pull the default model (gemma3:12b)",
-                    "default": False,
-                },
-                "model": {
-                    "type": "string",
-                    "description": "Model to pull (default: gemma3:12b). Use gemma3:4b or gemma3:1b for lower RAM systems.",
-                    "default": "gemma3:12b",
-                },
-            },
-        },
-    ),
-    Tool(
-        name="rlm_setup_ollama_direct",
-        description="Install Ollama via direct download (macOS). Downloads from ollama.com to ~/Applications. PROS: No Homebrew needed, no sudo required, fully headless, works on locked-down machines. CONS: Manual PATH setup, no auto-updates, service runs as foreground process.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "install": {
-                    "type": "boolean",
-                    "description": "Download and install Ollama to ~/Applications (no sudo needed)",
-                    "default": False,
-                },
-                "start_service": {
-                    "type": "boolean",
-                    "description": "Start Ollama server (ollama serve) in background",
-                    "default": False,
-                },
-                "pull_model": {
-                    "type": "boolean",
-                    "description": "Pull the default model (gemma3:12b)",
-                    "default": False,
-                },
-                "model": {
-                    "type": "string",
-                    "description": "Model to pull (default: gemma3:12b). Use gemma3:4b or gemma3:1b for lower RAM systems.",
-                    "default": "gemma3:12b",
-                },
-            },
-        },
-    ),
-    Tool(
-        name="rlm_ollama_status",
-        description="Check Ollama server status and available models. Returns whether Ollama is running, list of available models, and if the default model (gemma3:12b) is available. Use this to determine if free local inference is available.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "force_refresh": {
-                    "type": "boolean",
-                    "description": "Force refresh the cached status (default: false)",
-                    "default": False,
-                },
-            },
-        },
-    ),
-    Tool(
-        name="rlm_load_context",
-        description="Load a large context as an external variable. Returns metadata without the content itself.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Identifier for this context"},
-                "content": {"type": "string", "description": "The full context content"},
-            },
-            "required": ["name", "content"],
-        },
-    ),
-    Tool(
-        name="rlm_inspect_context",
-        description="Inspect a loaded context - get structure info without loading full content into prompt.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Context identifier"},
-                "preview_chars": {
-                    "type": "integer",
-                    "description": "Number of chars to preview (default 500)",
-                    "default": 500,
-                },
-            },
-            "required": ["name"],
-        },
-    ),
-    Tool(
-        name="rlm_chunk_context",
-        description="Chunk a loaded context by strategy. Returns chunk metadata, not full content.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Context identifier"},
-                "strategy": {
-                    "type": "string",
-                    "enum": ["lines", "chars", "paragraphs"],
-                    "description": "Chunking strategy",
-                    "default": "lines",
-                },
-                "size": {
-                    "type": "integer",
-                    "description": "Chunk size (lines/chars depending on strategy)",
-                    "default": 100,
-                },
-            },
-            "required": ["name"],
-        },
-    ),
-    Tool(
-        name="rlm_get_chunk",
-        description="Get a specific chunk by index. Use after chunking to retrieve individual pieces.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Context identifier"},
-                "chunk_index": {"type": "integer", "description": "Index of chunk to retrieve"},
-            },
-            "required": ["name", "chunk_index"],
-        },
-    ),
-    Tool(
-        name="rlm_filter_context",
-        description="Filter context using regex/string operations. Creates a new filtered context.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Source context identifier"},
-                "output_name": {"type": "string", "description": "Name for filtered context"},
-                "pattern": {"type": "string", "description": "Regex pattern to match"},
-                "mode": {
-                    "type": "string",
-                    "enum": ["keep", "remove"],
-                    "description": "Keep or remove matching lines",
-                    "default": "keep",
-                },
-            },
-            "required": ["name", "output_name", "pattern"],
-        },
-    ),
-    Tool(
-        name="rlm_sub_query",
-        description="Make a sub-LLM call on a chunk or filtered context. Core of recursive pattern.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Question/instruction for the sub-call"},
-                "context_name": {"type": "string", "description": "Context identifier to query against"},
-                "chunk_index": {"type": "integer", "description": "Optional: specific chunk index"},
-                "provider": PROVIDER_SCHEMA,
-                "model": {
-                    "type": "string",
-                    "description": "Model to use (provider-specific defaults apply)",
-                },
-            },
-            "required": ["query", "context_name"],
-        },
-    ),
-    Tool(
-        name="rlm_store_result",
-        description="Store a sub-call result for later aggregation.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Result set identifier"},
-                "result": {"type": "string", "description": "Result content to store"},
-                "metadata": {"type": "object", "description": "Optional metadata about this result"},
-            },
-            "required": ["name", "result"],
-        },
-    ),
-    Tool(
-        name="rlm_get_results",
-        description="Retrieve stored results for aggregation.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Result set identifier"},
-            },
-            "required": ["name"],
-        },
-    ),
-    Tool(
-        name="rlm_list_contexts",
-        description="List all loaded contexts and their metadata.",
-        inputSchema={
-            "type": "object",
-            "properties": {},
-        },
-    ),
-    Tool(
-        name="rlm_sub_query_batch",
-        description="Process multiple chunks in parallel. Respects concurrency limit to manage system resources.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Question/instruction for each sub-call"},
-                "context_name": {"type": "string", "description": "Context identifier"},
-                "chunk_indices": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "List of chunk indices to process",
-                },
-                "provider": PROVIDER_SCHEMA,
-                "model": {
-                    "type": "string",
-                    "description": "Model to use (provider-specific defaults apply)",
-                },
-                "concurrency": {
-                    "type": "integer",
-                    "description": "Max parallel requests (default 4, max 8)",
-                    "default": 4,
-                },
-            },
-            "required": ["query", "context_name", "chunk_indices"],
-        },
-    ),
-    Tool(
-        name="rlm_auto_analyze",
-        description="Automatically detect content type and analyze with optimal chunking strategy. One-step analysis for common tasks.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Context identifier"},
-                "content": {"type": "string", "description": "The content to analyze"},
-                "goal": {
-                    "type": "string",
-                    "description": "Analysis goal: 'summarize', 'find_bugs', 'extract_structure', 'security_audit', or 'answer:<your question>'",
-                },
-                "provider": PROVIDER_SCHEMA_CLAUDE_DEFAULT,
-                "concurrency": {
-                    "type": "integer",
-                    "description": "Max parallel requests (default 4, max 8)",
-                    "default": 4,
-                },
-            },
-            "required": ["name", "content", "goal"],
-        },
-    ),
-    Tool(
-        name="rlm_exec",
-        description="Execute Python code against a loaded context in a sandboxed subprocess. Set result variable for output.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "description": "Python code to execute. User sets result variable for output.",
-                },
-                "context_name": {
-                    "type": "string",
-                    "description": "Name of previously loaded context",
-                },
-                "timeout": {
-                    "type": "integer",
-                    "description": "Max execution time in seconds (default 30)",
-                    "default": 30,
-                },
-            },
-            "required": ["code", "context_name"],
-        },
-    ),
-]
+# =============================================================================
+# FastMCP Tool Definitions
+# =============================================================================
 
 
-@server.list_tools()
-async def list_tools() -> list[Tool]:
-    """List available RLM tools."""
-    return TOOL_DEFINITIONS
+@mcp.tool()
+async def rlm_system_check() -> dict:
+    """Check if system meets requirements for Ollama with gemma3:12b.
 
-
-# Tool handlers
-async def _handle_system_check(_arguments: dict) -> list[TextContent]:
-    """Check if system meets requirements for Ollama."""
+    Verifies: macOS, Apple Silicon (M1/M2/M3/M4), 16GB+ RAM, Homebrew installed.
+    Use before attempting Ollama setup.
+    """
     result = _check_system_requirements()
 
     # Add summary
@@ -1281,26 +978,36 @@ async def _handle_system_check(_arguments: dict) -> list[TextContent]:
             f"System check: {len(result['issues'])} issue(s) found. See 'issues' and 'recommendations' for details."
         )
 
-    return _text_response(result)
+    return result
 
 
-async def _handle_setup_ollama(arguments: dict) -> list[TextContent]:
-    """Install and configure Ollama."""
-    install = arguments.get("install", False)
-    start_service = arguments.get("start_service", False)
-    pull_model = arguments.get("pull_model", False)
-    model = arguments.get("model", "gemma3:12b")
+@mcp.tool()
+async def rlm_setup_ollama(
+    install: bool = False,
+    start_service: bool = False,
+    pull_model: bool = False,
+    model: str = "gemma3:12b",
+) -> dict:
+    """Install Ollama via Homebrew (macOS).
 
+    Requires Homebrew pre-installed. Uses 'brew install' and 'brew services'.
+    PROS: Auto-updates, pre-built binaries, managed service.
+    CONS: Requires Homebrew, may prompt for sudo on first Homebrew install.
+
+    Args:
+        install: Install Ollama via Homebrew (requires Homebrew)
+        start_service: Start Ollama as a background service via brew services
+        pull_model: Pull the default model (gemma3:12b)
+        model: Model to pull (default: gemma3:12b). Use gemma3:4b or gemma3:1b for lower RAM systems.
+    """
     # If no actions specified, just do a system check
     if not any([install, start_service, pull_model]):
         sys_check = _check_system_requirements()
-        return _text_response(
-            {
-                "message": "No actions specified. Use install=true, start_service=true, or pull_model=true.",
-                "system_check": sys_check,
-                "example": "rlm_setup_ollama(install=true, start_service=true, pull_model=true)",
-            }
-        )
+        return {
+            "message": "No actions specified. Use install=true, start_service=true, or pull_model=true.",
+            "system_check": sys_check,
+            "example": "rlm_setup_ollama(install=true, start_service=true, pull_model=true)",
+        }
 
     result = await _setup_ollama(
         install=install,
@@ -1318,37 +1025,47 @@ async def _handle_setup_ollama(arguments: dict) -> list[TextContent]:
     else:
         result["summary"] = f"Setup failed: {'; '.join(result['errors'])}"
 
-    return _text_response(result)
+    return result
 
 
-async def _handle_setup_ollama_direct(arguments: dict) -> list[TextContent]:
-    """Install Ollama via direct download - fully headless, no sudo."""
-    install = arguments.get("install", False)
-    start_service = arguments.get("start_service", False)
-    pull_model = arguments.get("pull_model", False)
-    model = arguments.get("model", "gemma3:12b")
+@mcp.tool()
+async def rlm_setup_ollama_direct(
+    install: bool = False,
+    start_service: bool = False,
+    pull_model: bool = False,
+    model: str = "gemma3:12b",
+) -> dict:
+    """Install Ollama via direct download (macOS).
 
+    Downloads from ollama.com to ~/Applications.
+    PROS: No Homebrew needed, no sudo required, fully headless, works on locked-down machines.
+    CONS: Manual PATH setup, no auto-updates, service runs as foreground process.
+
+    Args:
+        install: Download and install Ollama to ~/Applications (no sudo needed)
+        start_service: Start Ollama server (ollama serve) in background
+        pull_model: Pull the default model (gemma3:12b)
+        model: Model to pull (default: gemma3:12b). Use gemma3:4b or gemma3:1b for lower RAM systems.
+    """
     # If no actions specified, show comparison
     if not any([install, start_service, pull_model]):
-        return _text_response(
-            {
-                "message": "No actions specified. Use install=true, start_service=true, or pull_model=true.",
-                "method": "direct_download",
-                "advantages": [
-                    "No Homebrew required",
-                    "No sudo/admin permissions needed",
-                    "Fully headless automation",
-                    "Works on locked-down/managed machines",
-                ],
-                "disadvantages": [
-                    "Manual PATH setup needed (CLI at ~/Applications/Ollama.app/Contents/Resources/ollama)",
-                    "No automatic updates",
-                    "Service runs via 'ollama serve' (not a managed launchd service)",
-                ],
-                "example": "rlm_setup_ollama_direct(install=true, start_service=true, pull_model=true)",
-                "alternative": "Use rlm_setup_ollama for Homebrew-based installation if you have Homebrew",
-            }
-        )
+        return {
+            "message": "No actions specified. Use install=true, start_service=true, or pull_model=true.",
+            "method": "direct_download",
+            "advantages": [
+                "No Homebrew required",
+                "No sudo/admin permissions needed",
+                "Fully headless automation",
+                "Works on locked-down/managed machines",
+            ],
+            "disadvantages": [
+                "Manual PATH setup needed (CLI at ~/Applications/Ollama.app/Contents/Resources/ollama)",
+                "No automatic updates",
+                "Service runs via 'ollama serve' (not a managed launchd service)",
+            ],
+            "example": "rlm_setup_ollama_direct(install=true, start_service=true, pull_model=true)",
+            "alternative": "Use rlm_setup_ollama for Homebrew-based installation if you have Homebrew",
+        }
 
     result = await _setup_ollama_direct(
         install=install,
@@ -1368,12 +1085,20 @@ async def _handle_setup_ollama_direct(arguments: dict) -> list[TextContent]:
     else:
         result["summary"] = f"Setup failed: {'; '.join(result['errors'])}"
 
-    return _text_response(result)
+    return result
 
 
-async def _handle_ollama_status(arguments: dict) -> list[TextContent]:
-    """Check Ollama server status and available models."""
-    force_refresh = arguments.get("force_refresh", False)
+@mcp.tool()
+async def rlm_ollama_status(force_refresh: bool = False) -> dict:
+    """Check Ollama server status and available models.
+
+    Returns whether Ollama is running, list of available models, and if the
+    default model (gemma3:12b) is available. Use this to determine if free
+    local inference is available.
+
+    Args:
+        force_refresh: Force refresh the cached status (default: false)
+    """
     status = await _check_ollama_status(force_refresh=force_refresh)
 
     # Add recommendation based on status
@@ -1390,127 +1115,142 @@ async def _handle_ollama_status(arguments: dict) -> list[TextContent]:
     # Add current best provider
     status["best_provider"] = _get_best_provider()
 
-    return _text_response(status)
+    return status
 
 
-async def _handle_load_context(arguments: dict) -> list[TextContent]:
-    """Load a large context as an external variable."""
-    ctx_name = arguments["name"]
-    content = arguments["content"]
+@mcp.tool()
+async def rlm_load_context(name: str, content: str) -> dict:
+    """Load a large context as an external variable.
 
+    Returns metadata without the content itself.
+
+    Args:
+        name: Identifier for this context
+        content: The full context content
+    """
     content_hash = _hash_content(content)
-    meta = _context_summary(ctx_name, content, hash=content_hash, chunks=None)
-    contexts[ctx_name] = {"meta": meta, "content": content}
-    _save_context_to_disk(ctx_name, content, meta)
+    meta = _context_summary(name, content, hash=content_hash, chunks=None)
+    contexts[name] = {"meta": meta, "content": content}
+    _save_context_to_disk(name, content, meta)
 
-    return _text_response(
-        {
-            "status": "loaded",
-            "name": ctx_name,
-            "length": meta["length"],
-            "lines": meta["lines"],
-            "hash": content_hash,
-        }
-    )
+    return {
+        "status": "loaded",
+        "name": name,
+        "length": meta["length"],
+        "lines": meta["lines"],
+        "hash": content_hash,
+    }
 
 
-async def _handle_inspect_context(arguments: dict) -> list[TextContent]:
-    """Inspect a loaded context."""
-    ctx_name = arguments["name"]
-    preview_chars = arguments.get("preview_chars", 500)
+@mcp.tool()
+async def rlm_inspect_context(name: str, preview_chars: int = 500) -> dict:
+    """Inspect a loaded context - get structure info without loading full content into prompt.
 
-    error = _ensure_context_loaded(ctx_name)
+    Args:
+        name: Context identifier
+        preview_chars: Number of chars to preview (default 500)
+    """
+    error = _ensure_context_loaded(name)
     if error:
-        return _error_response("context_not_found", error)
+        return {"error": "context_not_found", "message": error}
 
-    ctx = contexts[ctx_name]
+    ctx = contexts[name]
     content = ctx["content"]
     chunk_meta = ctx["meta"].get("chunks")
 
-    summary = _context_summary(
-        ctx_name,
+    return _context_summary(
+        name,
         content,
         preview=content[:preview_chars],
         has_chunks=chunk_meta is not None,
         chunk_count=len(chunk_meta) if chunk_meta else 0,
     )
-    return _text_response(summary)
 
 
-async def _handle_chunk_context(arguments: dict) -> list[TextContent]:
-    """Chunk a loaded context by strategy."""
-    ctx_name = arguments["name"]
-    strategy = arguments.get("strategy", "lines")
-    size = arguments.get("size", 100)
+@mcp.tool()
+async def rlm_chunk_context(
+    name: str,
+    strategy: str = "lines",
+    size: int = 100,
+) -> dict:
+    """Chunk a loaded context by strategy. Returns chunk metadata, not full content.
 
-    error = _ensure_context_loaded(ctx_name)
+    Args:
+        name: Context identifier
+        strategy: Chunking strategy - 'lines', 'chars', or 'paragraphs'
+        size: Chunk size (lines/chars depending on strategy)
+    """
+    error = _ensure_context_loaded(name)
     if error:
-        return _error_response("context_not_found", error)
+        return {"error": "context_not_found", "message": error}
 
-    content = contexts[ctx_name]["content"]
+    content = contexts[name]["content"]
     chunks = _chunk_content(content, strategy, size)
 
     chunk_meta = [{"index": i, "length": len(chunk), "preview": chunk[:100]} for i, chunk in enumerate(chunks)]
 
-    contexts[ctx_name]["meta"]["chunks"] = chunk_meta
-    contexts[ctx_name]["chunks"] = chunks
+    contexts[name]["meta"]["chunks"] = chunk_meta
+    contexts[name]["chunks"] = chunks
 
-    chunk_dir = CHUNKS_DIR / ctx_name
+    chunk_dir = CHUNKS_DIR / name
     chunk_dir.mkdir(exist_ok=True)
     for i, chunk in enumerate(chunks):
         (chunk_dir / f"{i}.txt").write_text(chunk)
 
-    return _text_response(
-        {
-            "status": "chunked",
-            "name": ctx_name,
-            "strategy": strategy,
-            "chunk_count": len(chunks),
-            "chunks": chunk_meta,
-        }
-    )
+    return {
+        "status": "chunked",
+        "name": name,
+        "strategy": strategy,
+        "chunk_count": len(chunks),
+        "chunks": chunk_meta,
+    }
 
 
-async def _handle_get_chunk(arguments: dict) -> list[TextContent]:
-    """Get a specific chunk by index."""
-    ctx_name = arguments["name"]
-    chunk_index = arguments["chunk_index"]
+@mcp.tool()
+async def rlm_get_chunk(name: str, chunk_index: int) -> str | dict:
+    """Get a specific chunk by index. Use after chunking to retrieve individual pieces.
 
-    error = _ensure_context_loaded(ctx_name)
+    Args:
+        name: Context identifier
+        chunk_index: Index of chunk to retrieve
+    """
+    error = _ensure_context_loaded(name)
     if error:
-        return _error_response("context_not_found", error)
+        return {"error": "context_not_found", "message": error}
 
-    chunks = contexts[ctx_name].get("chunks")
+    chunks = contexts[name].get("chunks")
     if not chunks:
-        chunk_path = CHUNKS_DIR / ctx_name / f"{chunk_index}.txt"
+        chunk_path = CHUNKS_DIR / name / f"{chunk_index}.txt"
         if chunk_path.exists():
-            return _text_response(chunk_path.read_text())
-        return _error_response(
-            "context_not_chunked",
-            f"Context '{ctx_name}' has not been chunked yet",
-        )
+            return chunk_path.read_text()
+        return {"error": "context_not_chunked", "message": f"Context '{name}' has not been chunked yet"}
 
     if chunk_index >= len(chunks):
-        return _error_response(
-            "chunk_out_of_range",
-            f"Chunk index {chunk_index} out of range (max {len(chunks) - 1})",
-        )
+        return {"error": "chunk_out_of_range", "message": f"Chunk index {chunk_index} out of range (max {len(chunks) - 1})"}
 
-    return _text_response(chunks[chunk_index])
+    return chunks[chunk_index]
 
 
-async def _handle_filter_context(arguments: dict) -> list[TextContent]:
-    """Filter context using regex."""
-    src_name = arguments["name"]
-    out_name = arguments["output_name"]
-    pattern = arguments["pattern"]
-    mode = arguments.get("mode", "keep")
+@mcp.tool()
+async def rlm_filter_context(
+    name: str,
+    output_name: str,
+    pattern: str,
+    mode: str = "keep",
+) -> dict:
+    """Filter context using regex/string operations. Creates a new filtered context.
 
-    error = _ensure_context_loaded(src_name)
+    Args:
+        name: Source context identifier
+        output_name: Name for filtered context
+        pattern: Regex pattern to match
+        mode: 'keep' or 'remove' matching lines
+    """
+    error = _ensure_context_loaded(name)
     if error:
-        return _error_response("context_not_found", error)
+        return {"error": "context_not_found", "message": error}
 
-    content = contexts[src_name]["content"]
+    content = contexts[name]["content"]
     lines = content.split("\n")
     regex = re.compile(pattern)
 
@@ -1521,107 +1261,120 @@ async def _handle_filter_context(arguments: dict) -> list[TextContent]:
 
     new_content = "\n".join(filtered)
     meta = _context_summary(
-        out_name,
+        output_name,
         new_content,
         hash=_hash_content(new_content),
-        source=src_name,
+        source=name,
         filter_pattern=pattern,
         filter_mode=mode,
         chunks=None,
     )
-    contexts[out_name] = {"meta": meta, "content": new_content}
-    _save_context_to_disk(out_name, new_content, meta)
+    contexts[output_name] = {"meta": meta, "content": new_content}
+    _save_context_to_disk(output_name, new_content, meta)
 
-    return _text_response(
-        {
-            "status": "filtered",
-            "name": out_name,
-            "original_lines": len(lines),
-            "filtered_lines": len(filtered),
-            "length": len(new_content),
-        }
-    )
+    return {
+        "status": "filtered",
+        "name": output_name,
+        "original_lines": len(lines),
+        "filtered_lines": len(filtered),
+        "length": len(new_content),
+    }
 
 
-async def _handle_sub_query(arguments: dict) -> list[TextContent]:
-    """Make a sub-LLM call on a chunk or context."""
-    query = arguments["query"]
-    ctx_name = arguments["context_name"]
-    chunk_index = arguments.get("chunk_index")
-    provider = arguments.get("provider", "auto")
-    model = arguments.get("model")
+@mcp.tool()
+async def rlm_sub_query(
+    query: str,
+    context_name: str,
+    chunk_index: Optional[int] = None,
+    provider: str = "auto",
+    model: Optional[str] = None,
+) -> dict:
+    """Make a sub-LLM call on a chunk or filtered context. Core of recursive pattern.
 
+    Args:
+        query: Question/instruction for the sub-call
+        context_name: Context identifier to query against
+        chunk_index: Optional: specific chunk index
+        provider: LLM provider - 'auto', 'ollama', or 'claude-sdk'. 'auto' prefers Ollama if available (free local inference)
+        model: Model to use (provider-specific defaults apply)
+    """
     # Resolve auto provider and model
     resolved_provider, resolved_model = await _resolve_provider_and_model(provider, model)
 
-    error = _ensure_context_loaded(ctx_name)
+    error = _ensure_context_loaded(context_name)
     if error:
-        return _error_response("context_not_found", error)
+        return {"error": "context_not_found", "message": error}
 
     if chunk_index is not None:
-        chunks = contexts[ctx_name].get("chunks")
+        chunks = contexts[context_name].get("chunks")
         if not chunks or chunk_index >= len(chunks):
-            return _error_response("chunk_not_available", f"Chunk {chunk_index} not available")
+            return {"error": "chunk_not_available", "message": f"Chunk {chunk_index} not available"}
         context_content = chunks[chunk_index]
     else:
-        context_content = contexts[ctx_name]["content"]
+        context_content = contexts[context_name]["content"]
 
     result, call_error = await _make_provider_call(resolved_provider, resolved_model, query, context_content)
 
     if call_error:
-        return _text_response(
-            {
-                "error": "provider_error",
-                "provider": resolved_provider,
-                "model": resolved_model,
-                "requested_provider": provider,
-                "message": call_error,
-            }
-        )
-
-    return _text_response(
-        {
+        return {
+            "error": "provider_error",
             "provider": resolved_provider,
             "model": resolved_model,
-            "requested_provider": provider if provider == "auto" else None,
-            "response": result,
+            "requested_provider": provider,
+            "message": call_error,
         }
-    )
+
+    return {
+        "provider": resolved_provider,
+        "model": resolved_model,
+        "requested_provider": provider if provider == "auto" else None,
+        "response": result,
+    }
 
 
-async def _handle_store_result(arguments: dict) -> list[TextContent]:
-    """Store a sub-call result for later aggregation."""
-    result_name = arguments["name"]
-    result = arguments["result"]
-    metadata = arguments.get("metadata", {})
+@mcp.tool()
+async def rlm_store_result(
+    name: str,
+    result: str,
+    metadata: Optional[dict] = None,
+) -> str:
+    """Store a sub-call result for later aggregation.
 
-    results_file = RESULTS_DIR / f"{result_name}.jsonl"
+    Args:
+        name: Result set identifier
+        result: Result content to store
+        metadata: Optional metadata about this result
+    """
+    results_file = RESULTS_DIR / f"{name}.jsonl"
     with open(results_file, "a") as f:
-        f.write(json.dumps({"result": result, "metadata": metadata}) + "\n")
+        f.write(json.dumps({"result": result, "metadata": metadata or {}}) + "\n")
 
-    return _text_response(f"Result stored to '{result_name}'")
+    return f"Result stored to '{name}'"
 
 
-async def _handle_get_results(arguments: dict) -> list[TextContent]:
-    """Retrieve stored results for aggregation."""
-    result_name = arguments["name"]
-    results_file = RESULTS_DIR / f"{result_name}.jsonl"
+@mcp.tool()
+async def rlm_get_results(name: str) -> dict | str:
+    """Retrieve stored results for aggregation.
+
+    Args:
+        name: Result set identifier
+    """
+    results_file = RESULTS_DIR / f"{name}.jsonl"
 
     if not results_file.exists():
-        return _text_response(f"No results found for '{result_name}'")
+        return f"No results found for '{name}'"
 
     results = [json.loads(line) for line in results_file.read_text().splitlines()]
 
-    return _text_response(
-        {
-            "name": result_name,
-            "count": len(results),
-            "results": results,
-        }
-    )
+    return {
+        "name": name,
+        "count": len(results),
+        "results": results,
+    }
 
 
-async def _handle_list_contexts(_arguments: dict) -> list[TextContent]:
+@mcp.tool()
+async def rlm_list_contexts() -> dict:
     """List all loaded contexts and their metadata."""
     ctx_list = [
         {
@@ -1647,38 +1400,44 @@ async def _handle_list_contexts(_arguments: dict) -> list[TextContent]:
                 }
             )
 
-    return _text_response({"contexts": ctx_list})
+    return {"contexts": ctx_list}
 
 
-async def _handle_sub_query_batch(arguments: dict) -> list[TextContent]:
-    """Process multiple chunks in parallel."""
-    query = arguments["query"]
-    ctx_name = arguments["context_name"]
-    chunk_indices = arguments["chunk_indices"]
-    provider = arguments.get("provider", "auto")
-    model = arguments.get("model")
-    concurrency = min(arguments.get("concurrency", 4), 8)
+@mcp.tool()
+async def rlm_sub_query_batch(
+    query: str,
+    context_name: str,
+    chunk_indices: list[int],
+    provider: str = "auto",
+    model: Optional[str] = None,
+    concurrency: int = 4,
+) -> dict:
+    """Process multiple chunks in parallel. Respects concurrency limit to manage system resources.
+
+    Args:
+        query: Question/instruction for each sub-call
+        context_name: Context identifier
+        chunk_indices: List of chunk indices to process
+        provider: LLM provider - 'auto', 'ollama', or 'claude-sdk'
+        model: Model to use (provider-specific defaults apply)
+        concurrency: Max parallel requests (default 4, max 8)
+    """
+    concurrency = min(concurrency, 8)
 
     # Resolve auto provider and model once for the entire batch
     resolved_provider, resolved_model = await _resolve_provider_and_model(provider, model)
 
-    error = _ensure_context_loaded(ctx_name)
+    error = _ensure_context_loaded(context_name)
     if error:
-        return _error_response("context_not_found", error)
+        return {"error": "context_not_found", "message": error}
 
-    chunks = contexts[ctx_name].get("chunks")
+    chunks = contexts[context_name].get("chunks")
     if not chunks:
-        return _error_response(
-            "context_not_chunked",
-            f"Context '{ctx_name}' has not been chunked yet",
-        )
+        return {"error": "context_not_chunked", "message": f"Context '{context_name}' has not been chunked yet"}
 
     invalid_indices = [idx for idx in chunk_indices if idx >= len(chunks)]
     if invalid_indices:
-        return _error_response(
-            "invalid_chunk_indices",
-            f"Invalid chunk indices: {invalid_indices} (max: {len(chunks) - 1})",
-        )
+        return {"error": "invalid_chunk_indices", "message": f"Invalid chunk indices: {invalid_indices} (max: {len(chunks) - 1})"}
 
     semaphore = asyncio.Semaphore(concurrency)
 
@@ -1706,31 +1465,42 @@ async def _handle_sub_query_batch(arguments: dict) -> list[TextContent]:
     successful = sum(1 for r in results if "response" in r)
     failed = len(results) - successful
 
-    return _text_response(
-        {
-            "status": "completed",
-            "total_chunks": len(chunk_indices),
-            "successful": successful,
-            "failed": failed,
-            "concurrency": concurrency,
-            "provider": resolved_provider,
-            "model": resolved_model,
-            "requested_provider": provider if provider == "auto" else None,
-            "results": results,
-        }
-    )
+    return {
+        "status": "completed",
+        "total_chunks": len(chunk_indices),
+        "successful": successful,
+        "failed": failed,
+        "concurrency": concurrency,
+        "provider": resolved_provider,
+        "model": resolved_model,
+        "requested_provider": provider if provider == "auto" else None,
+        "results": results,
+    }
 
 
-async def _handle_auto_analyze(arguments: dict) -> list[TextContent]:
-    """Automatically detect content type and analyze with optimal strategy."""
-    ctx_name = arguments["name"]
-    content = arguments["content"]
-    goal = arguments["goal"]
-    provider = arguments.get("provider", "auto")
-    concurrency = min(arguments.get("concurrency", 4), 8)
+@mcp.tool()
+async def rlm_auto_analyze(
+    name: str,
+    content: str,
+    goal: str,
+    provider: str = "auto",
+    concurrency: int = 4,
+) -> dict:
+    """Automatically detect content type and analyze with optimal chunking strategy.
+
+    One-step analysis for common tasks.
+
+    Args:
+        name: Context identifier
+        content: The content to analyze
+        goal: Analysis goal: 'summarize', 'find_bugs', 'extract_structure', 'security_audit', or 'answer:<your question>'
+        provider: LLM provider - 'auto' prefers Ollama if available
+        concurrency: Max parallel requests (default 4, max 8)
+    """
+    concurrency = min(concurrency, 8)
 
     # Load the content
-    await _handle_load_context({"name": ctx_name, "content": content})
+    await rlm_load_context(name=name, content=content)
 
     # Detect content type
     detection = _detect_content_type(content)
@@ -1741,15 +1511,12 @@ async def _handle_auto_analyze(arguments: dict) -> list[TextContent]:
     strategy_config = _select_chunking_strategy(detected_type)
 
     # Chunk the content
-    chunk_result = await _handle_chunk_context(
-        {
-            "name": ctx_name,
-            "strategy": strategy_config["strategy"],
-            "size": strategy_config["size"],
-        }
+    chunk_result = await rlm_chunk_context(
+        name=name,
+        strategy=strategy_config["strategy"],
+        size=strategy_config["size"],
     )
-    chunk_data = json.loads(chunk_result[0].text)
-    chunk_count = chunk_data["chunk_count"]
+    chunk_count = chunk_result["chunk_count"]
 
     # Sample if too many chunks (max 20)
     chunk_indices = list(range(chunk_count))
@@ -1763,48 +1530,52 @@ async def _handle_auto_analyze(arguments: dict) -> list[TextContent]:
     adapted_query = _adapt_query_for_goal(goal, detected_type)
 
     # Run batch query
-    batch_result = await _handle_sub_query_batch(
-        {
-            "query": adapted_query,
-            "context_name": ctx_name,
-            "chunk_indices": chunk_indices,
-            "provider": provider,
-            "concurrency": concurrency,
-        }
-    )
-    batch_data = json.loads(batch_result[0].text)
-
-    return _text_response(
-        {
-            "status": "completed",
-            "detected_type": detected_type,
-            "confidence": confidence,
-            "strategy": strategy_config,
-            "chunk_count": chunk_count,
-            "chunks_analyzed": len(chunk_indices),
-            "sampled": sampled,
-            "goal": goal,
-            "adapted_query": adapted_query,
-            "provider": provider,
-            "successful": batch_data["successful"],
-            "failed": batch_data["failed"],
-            "results": batch_data["results"],
-        }
+    batch_result = await rlm_sub_query_batch(
+        query=adapted_query,
+        context_name=name,
+        chunk_indices=chunk_indices,
+        provider=provider,
+        concurrency=concurrency,
     )
 
+    return {
+        "status": "completed",
+        "detected_type": detected_type,
+        "confidence": confidence,
+        "strategy": strategy_config,
+        "chunk_count": chunk_count,
+        "chunks_analyzed": len(chunk_indices),
+        "sampled": sampled,
+        "goal": goal,
+        "adapted_query": adapted_query,
+        "provider": provider,
+        "successful": batch_result["successful"],
+        "failed": batch_result["failed"],
+        "results": batch_result["results"],
+    }
 
-async def _handle_exec(arguments: dict) -> list[TextContent]:
-    """Execute Python code against a loaded context in a sandboxed subprocess."""
-    code = arguments["code"]
-    ctx_name = arguments["context_name"]
-    timeout = arguments.get("timeout", 30)
 
+@mcp.tool()
+async def rlm_exec(
+    code: str,
+    context_name: str,
+    timeout: int = 30,
+) -> dict:
+    """Execute Python code against a loaded context in a sandboxed subprocess.
+
+    Set result variable for output.
+
+    Args:
+        code: Python code to execute. User sets result variable for output.
+        context_name: Name of previously loaded context
+        timeout: Max execution time in seconds (default 30)
+    """
     # Ensure context is loaded
-    error = _ensure_context_loaded(ctx_name)
+    error = _ensure_context_loaded(context_name)
     if error:
-        return _error_response("context_not_found", error)
+        return {"error": "context_not_found", "message": error}
 
-    content = contexts[ctx_name]["content"]
+    content = contexts[context_name]["content"]
 
     # Create a temporary Python file with the execution environment
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -1873,28 +1644,24 @@ except Exception as e:
             # Clean stdout
             stdout = stdout[: stdout.index("__RESULT_START__")].strip()
 
-        return _text_response(
-            {
-                "result": result,
-                "stdout": stdout,
-                "stderr": stderr,
-                "return_code": return_code,
-                "timed_out": False,
-            }
-        )
+        return {
+            "result": result,
+            "stdout": stdout,
+            "stderr": stderr,
+            "return_code": return_code,
+            "timed_out": False,
+        }
 
     except subprocess.TimeoutExpired:
-        return _text_response(
-            {
-                "result": None,
-                "stdout": "",
-                "stderr": f"Execution timed out after {timeout} seconds",
-                "return_code": -1,
-                "timed_out": True,
-            }
-        )
+        return {
+            "result": None,
+            "stdout": "",
+            "stderr": f"Execution timed out after {timeout} seconds",
+            "return_code": -1,
+            "timed_out": True,
+        }
     except Exception as e:
-        return _error_response("execution_error", str(e))
+        return {"error": "execution_error", "message": str(e)}
     finally:
         # Clean up temp file
         try:
@@ -1903,45 +1670,15 @@ except Exception as e:
             pass
 
 
-# Tool dispatch table
-TOOL_HANDLERS = {
-    "rlm_system_check": _handle_system_check,
-    "rlm_setup_ollama": _handle_setup_ollama,
-    "rlm_setup_ollama_direct": _handle_setup_ollama_direct,
-    "rlm_ollama_status": _handle_ollama_status,
-    "rlm_load_context": _handle_load_context,
-    "rlm_inspect_context": _handle_inspect_context,
-    "rlm_chunk_context": _handle_chunk_context,
-    "rlm_get_chunk": _handle_get_chunk,
-    "rlm_filter_context": _handle_filter_context,
-    "rlm_sub_query": _handle_sub_query,
-    "rlm_store_result": _handle_store_result,
-    "rlm_get_results": _handle_get_results,
-    "rlm_list_contexts": _handle_list_contexts,
-    "rlm_sub_query_batch": _handle_sub_query_batch,
-    "rlm_auto_analyze": _handle_auto_analyze,
-    "rlm_exec": _handle_exec,
-}
+# =============================================================================
+# Entry Point
+# =============================================================================
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    """Route tool calls to their handlers."""
-    handler = TOOL_HANDLERS.get(name)
-    if handler:
-        return await handler(arguments)
-    return _text_response(f"Unknown tool: {name}")
-
-
-async def main():
+def main():
     """Run the MCP server."""
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
+    mcp.run()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
