@@ -291,7 +291,8 @@ jobs:
       - name: Install mcp-publisher
         run: |
           # Download latest mcp-publisher binary from GitHub releases
-          LATEST_URL=$(curl -s https://api.github.com/repos/modelcontextprotocol/registry/releases/latest | jq -r '.assets[] | select(.name | contains("linux_amd64")) | .browser_download_url')
+          # Filter specifically for mcp-publisher tarball (not sbom, sigstore, or registry)
+          LATEST_URL=$(curl -s https://api.github.com/repos/modelcontextprotocol/registry/releases/latest | jq -r '.assets[] | select(.name | test("^mcp-publisher.*linux_amd64\\.tar\\.gz$")) | .browser_download_url')
           if [ -n "$LATEST_URL" ] && [ "$LATEST_URL" != "null" ]; then
             echo "Downloading latest mcp-publisher from: $LATEST_URL"
             curl -fsSL "$LATEST_URL" -o mcp-publisher.tar.gz
