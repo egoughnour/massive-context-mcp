@@ -1,0 +1,117 @@
+{
+  "manifest_version": "0.4",
+  "name": "massive-context-mcp",
+  "display_name": "Massive Context MCP",
+  "version": "0.1.0",
+  "description": "Handle 10M+ token contexts with chunking, sub-queries, and local Ollama inference",
+  "long_description": "Implements the Recursive Language Model pattern (arxiv.org/html/2512.24601v1) for massive context handling. Load huge contexts as external variables, chunk them, run parallel sub-queries via Ollama (free local) or Claude, and aggregate results. Includes automated Ollama setup for macOS.",
+  "author": {
+    "name": "Erik Goughnour",
+    "email": "e.goughnour@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/egoughnour/massive-context-mcp.git"
+  },
+  "icon": "icon.png",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/rlm_mcp_server.py",
+    "mcp_config": {
+      "env": {
+        "RLM_DATA_DIR": "${user_config.rlm_data_dir}",
+        "OLLAMA_URL": "${user_config.ollama_url}"
+      }
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  },
+  "user_config": {
+    "rlm_data_dir": {
+      "type": "directory",
+      "title": "RLM Data Directory",
+      "description": "Directory where RLM stores contexts, chunks, and results",
+      "required": false,
+      "default": "${HOME}/.rlm-data"
+    },
+    "ollama_url": {
+      "type": "string",
+      "title": "Ollama URL",
+      "description": "URL for local Ollama server (optional, for free local inference)",
+      "required": false,
+      "default": "http://localhost:11434"
+    }
+  },
+  "tools": [
+    {
+      "name": "rlm_system_check",
+      "description": "Check system requirements (macOS, Apple Silicon, 16GB+ RAM, Homebrew)"
+    },
+    {
+      "name": "rlm_setup_ollama",
+      "description": "Install Ollama via Homebrew (macOS) - auto-updates, managed service, requires Homebrew"
+    },
+    {
+      "name": "rlm_setup_ollama_direct",
+      "description": "Install Ollama via direct download (macOS) - no sudo, fully headless, works on locked-down machines"
+    },
+    {
+      "name": "rlm_ollama_status",
+      "description": "Check Ollama availability and models - enables free local inference when available"
+    },
+    {
+      "name": "rlm_auto_analyze",
+      "description": "One-step analysis - auto-detects type, chunks, and queries (uses Ollama if available)"
+    },
+    {
+      "name": "rlm_load_context",
+      "description": "Load context as external variable"
+    },
+    {
+      "name": "rlm_inspect_context",
+      "description": "Get structure info without loading into prompt"
+    },
+    {
+      "name": "rlm_chunk_context",
+      "description": "Chunk by lines/chars/paragraphs"
+    },
+    {
+      "name": "rlm_get_chunk",
+      "description": "Retrieve specific chunk"
+    },
+    {
+      "name": "rlm_filter_context",
+      "description": "Filter with regex (keep/remove matching lines)"
+    },
+    {
+      "name": "rlm_exec",
+      "description": "Execute Python code against loaded context (sandboxed)"
+    },
+    {
+      "name": "rlm_sub_query",
+      "description": "Make sub-LLM call on chunk"
+    },
+    {
+      "name": "rlm_sub_query_batch",
+      "description": "Process multiple chunks in parallel"
+    },
+    {
+      "name": "rlm_store_result",
+      "description": "Store sub-call result for aggregation"
+    },
+    {
+      "name": "rlm_get_results",
+      "description": "Retrieve stored results"
+    },
+    {
+      "name": "rlm_list_contexts",
+      "description": "List all loaded contexts"
+    }
+  ],
+  "keywords": ["massive-context", "chunking", "sub-query", "ollama", "local-inference", "rlm", "recursive-language-model"],
+  "license": "MIT"
+}

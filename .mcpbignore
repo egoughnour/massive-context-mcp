@@ -1,0 +1,44 @@
+# Virtual environments and caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+.ruff_cache/
+
+# Legacy directories
+server/lib/
+server/venv/
+
+# Version control
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# OS files
+.DS_Store
+
+# Tests (not needed in bundle)
+tests/
+
+# Lock files
+*.lock
+
+# Development files
+CLAUDE.md.example
+test-interface.html
+mcp_config.json
+.claude/
+CHANGELOG.md
+server.json
+
+# Build artifacts
+dist/
+build/
+*.whl
+*.tar.gz
+coverage.xml
+.coverage

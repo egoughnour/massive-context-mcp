@@ -1,0 +1,189 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run (build but do not publish)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[dev]"
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v
+
+  build-mcpb:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      mcpb_filename: ${{ steps.pack.outputs.filename }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            # Extract version from tag (v0.1.0 -> 0.1.0)
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update manifest version
+        run: |
+          # Update version in manifest.json
+          jq '.version = "${{ steps.version.outputs.version }}"' manifest.json > manifest.tmp.json
+          mv manifest.tmp.json manifest.json
+          echo "Updated manifest.json:"
+          cat manifest.json | jq '.version, .name'
+
+      - name: Pack MCPB bundle
+        id: pack
+        run: |
+          npx @anthropic-ai/mcpb pack
+          MCPB_FILE=$(ls *.mcpb 2>/dev/null | head -1)
+          echo "filename=$MCPB_FILE" >> $GITHUB_OUTPUT
+          echo "Created: $MCPB_FILE"
+
+      - name: Verify MCPB bundle
+        run: |
+          MCPB_FILE=$(ls *.mcpb 2>/dev/null | head -1)
+          if [ -n "$MCPB_FILE" ]; then
+            echo "Bundle contents:"
+            unzip -l "$MCPB_FILE"
+
+            # Verify manifest is present and valid
+            unzip -p "$MCPB_FILE" manifest.json | jq .
+          else
+            echo "ERROR: No .mcpb file created"
+            exit 1
+          fi
+
+      - name: Upload MCPB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcpb-bundle
+          path: "*.mcpb"
+          retention-days: 90
+
+  release:
+    needs: [build-mcpb]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download MCPB artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mcpb-bundle
+          path: ./artifacts/
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=v${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Massive Context MCP v${{ steps.version.outputs.version }}"
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          files: |
+            ./artifacts/*.mcpb
+          body: |
+            ## Massive Context MCP v${{ steps.version.outputs.version }}
+
+            ### Installation
+
+            #### Download and Install MCPB Bundle
+
+            1. Download `massive-context-mcp-${{ steps.version.outputs.version }}.mcpb` from the assets below
+            2. Install via Claude Desktop or your MCP client
+
+            #### Or install from GitHub Release URL
+
+            The MCPB can be installed directly from:
+            ```
+            https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/massive-context-mcp-${{ steps.version.outputs.version }}.mcpb
+            ```
+
+            ### What's Included
+
+            - **16 MCP tools** for massive context handling (10M+ tokens)
+            - **Ollama integration** for free local inference
+            - **Auto-provider detection** - uses Ollama when available, falls back to Claude SDK
+            - **macOS setup tools** - automated Ollama installation (Homebrew or direct download)
+
+            ### Changes
+
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+
+  # Optional: Publish to MCP Registry
+  # Uncomment when ready to publish to the official registry
+  #
+  # publish-registry:
+  #   needs: release
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Download mcp-publisher
+  #       run: |
+  #         # Download latest mcp-publisher from GitHub releases
+  #         curl -L -o mcp-publisher https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher-linux-amd64
+  #         chmod +x mcp-publisher
+  #
+  #     - name: Authenticate with GitHub
+  #       run: |
+  #         ./mcp-publisher login github
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #
+  #     - name: Publish to MCP Registry
+  #       run: |
+  #         ./mcp-publisher publish

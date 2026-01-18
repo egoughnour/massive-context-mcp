@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RLM MCP Server Test Interface</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#172033'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+        body { font-family: 'Source Sans 3', system-ui, sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #1e293b; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Simulated MCP client for testing (replace with actual MCP connection in production)
+        const mockMCPClient = {
+            contexts: {},
+            results: {},
+
+            async loadContext(name, content) {
+                const lines = content.split('\n').length;
+                const chars = content.length;
+                this.contexts[name] = {
+                    content,
+                    meta: { lines, chars, type: detectContentType(content) }
+                };
+                return {
+                    status: 'loaded',
+                    name,
+                    lines,
+                    chars,
+                    type: this.contexts[name].meta.type
+                };
+            },
+
+            async inspectContext(name) {
+                const ctx = this.contexts[name];
+                if (!ctx) return { error: `Context '${name}' not found` };
+                return {
+                    name,
+                    ...ctx.meta,
+                    preview: ctx.content.slice(0, 500) + (ctx.content.length > 500 ? '...' : '')
+                };
+            },
+
+            async chunkContext(name, strategy, size) {
+                const ctx = this.contexts[name];
+                if (!ctx) return { error: `Context '${name}' not found` };
+
+                let chunks = [];
+                if (strategy === 'lines') {
+                    const lines = ctx.content.split('\n');
+                    for (let i = 0; i < lines.length; i += size) {
+                        chunks.push(lines.slice(i, i + size).join('\n'));
+                    }
+                } else if (strategy === 'chars') {
+                    for (let i = 0; i < ctx.content.length; i += size) {
+                        chunks.push(ctx.content.slice(i, i + size));
+                    }
+                } else if (strategy === 'paragraphs') {
+                    chunks = ctx.content.split(/\n\n+/).filter(p => p.trim());
+                }
+
+                ctx.chunks = chunks;
+                return {
+                    status: 'chunked',
+                    total_chunks: chunks.length,
+                    strategy,
+                    avg_chunk_size: Math.round(ctx.content.length / chunks.length)
+                };
+            },
+
+            async getChunk(name, index) {
+                const ctx = this.contexts[name];
+                if (!ctx?.chunks) return { error: 'Context not chunked' };
+                if (index >= ctx.chunks.length) return { error: 'Chunk index out of range' };
+                return {
+                    chunk_index: index,
+                    total_chunks: ctx.chunks.length,
+                    content: ctx.chunks[index]
+                };
+            },
+
+            async subQuery(name, query, chunkIndex, provider = 'ollama') {
+                // Simulate sub-query to Ollama/Claude
+                const ctx = this.contexts[name];
+                if (!ctx) return { error: `Context '${name}' not found` };
+
+                const content = chunkIndex !== undefined && ctx.chunks
+                    ? ctx.chunks[chunkIndex]
+                    : ctx.content;
+
+                // Simulated response (in real implementation, this calls the actual LLM)
+                return {
+                    status: 'completed',
+                    provider,
+                    model: provider === 'ollama' ? 'gemma3:12b' : 'claude-haiku-4-5',
+                    query,
+                    chunk_index: chunkIndex,
+                    response: `[Simulated ${provider} response for: "${query.slice(0, 50)}..."]\n\nAnalysis of ${content.length} characters of content would appear here.\n\nIn production, this connects to your local Ollama instance running Gemma 3:12B.`,
+                    tokens_used: Math.round(content.length / 4)
+                };
+            },
+
+            async autoAnalyze(name, content, goal) {
+                if (content) {
+                    await this.loadContext(name, content);
+                }
+                const ctx = this.contexts[name];
+                if (!ctx) return { error: `Context '${name}' not found` };
+
+                // Auto-detect optimal chunking
+                const chunkSize = ctx.meta.type === 'code' ? 100 : 50;
+                await this.chunkContext(name, 'lines', chunkSize);
+
+                // Simulate parallel sub-queries
+                const results = [];
+                for (let i = 0; i < Math.min(ctx.chunks.length, 3); i++) {
+                    results.push({
+                        chunk: i,
+                        summary: `[Chunk ${i + 1}/${ctx.chunks.length}] Analysis for goal: ${goal}`
+                    });
+                }
+
+                return {
+                    status: 'completed',
+                    goal,
+                    content_type: ctx.meta.type,
+                    total_chunks: ctx.chunks.length,
+                    chunks_processed: results.length,
+                    aggregated_result: `Aggregated analysis for "${goal}":\n\n${results.map(r => r.summary).join('\n\n')}`
+                };
+            },
+
+            listContexts() {
+                return Object.keys(this.contexts).map(name => ({
+                    name,
+                    ...this.contexts[name].meta,
+                    has_chunks: !!this.contexts[name].chunks,
+                    chunk_count: this.contexts[name].chunks?.length || 0
+                }));
+            }
+        };
+
+        function detectContentType(content) {
+            if (/^(import |from |def |class |async |const |let |var |function )/.test(content)) return 'code';
+            if (/^[\[\{]/.test(content.trim())) return 'json';
+            if (/^#+ /.test(content)) return 'markdown';
+            if (/^\d{4}-\d{2}-\d{2}/.test(content)) return 'logs';
+            return 'prose';
+        }
+
+        function StatusBadge({ status }) {
+            const colors = {
+                loaded: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+                chunked: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                completed: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+                error: 'bg-red-500/20 text-red-400 border-red-500/30',
+                pending: 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+            };
+            return (
+                <span className={`px-2 py-0.5 text-xs font-medium rounded border ${colors[status] || colors.pending}`}>
+                    {status}
+                </span>
+            );
+        }
+
+        function ToolCard({ title, description, children, icon }) {
+            return (
+                <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <span className="text-lg">{icon}</span>
+                        <h3 className="font-semibold text-slate-100">{title}</h3>
+                    </div>
+                    <p className="text-sm text-slate-400 mb-4">{description}</p>
+                    {children}
+                </div>
+            );
+        }
+
+        function JsonOutput({ data, maxHeight = '200px' }) {
+            if (!data) return null;
+            return (
+                <pre className={`mono text-xs bg-slate-900 border border-slate-700 rounded p-3 overflow-auto scrollbar-thin`}
+                     style={{ maxHeight }}>
+                    {JSON.stringify(data, null, 2)}
+                </pre>
+            );
+        }
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('load');
+            const [contextName, setContextName] = useState('my_context');
+            const [content, setContent] = useState('');
+            const [query, setQuery] = useState('');
+            const [goal, setGoal] = useState('summarize');
+            const [chunkStrategy, setChunkStrategy] = useState('lines');
+            const [chunkSize, setChunkSize] = useState(50);
+            const [chunkIndex, setChunkIndex] = useState(0);
+            const [provider, setProvider] = useState('ollama');
+            const [output, setOutput] = useState(null);
+            const [contexts, setContexts] = useState([]);
+            const [isLoading, setIsLoading] = useState(false);
+            const [logs, setLogs] = useState([]);
+
+            const addLog = (action, result) => {
+                setLogs(prev => [...prev.slice(-19), {
+                    time: new Date().toLocaleTimeString(),
+                    action,
+                    status: result.error ? 'error' : (result.status || 'success')
+                }]);
+            };
+
+            const refreshContexts = () => {
+                setContexts(mockMCPClient.listContexts());
+            };
+
+            useEffect(() => {
+                refreshContexts();
+            }, []);
+
+            const handleLoadContext = async () => {
+                setIsLoading(true);
+                const result = await mockMCPClient.loadContext(contextName, content);
+                setOutput(result);
+                addLog(`load_context(${contextName})`, result);
+                refreshContexts();
+                setIsLoading(false);
+            };
+
+            const handleInspectContext = async () => {
+                setIsLoading(true);
+                const result = await mockMCPClient.inspectContext(contextName);
+                setOutput(result);
+                addLog(`inspect_context(${contextName})`, result);
+                setIsLoading(false);
+            };
+
+            const handleChunkContext = async () => {
+                setIsLoading(true);
+                const result = await mockMCPClient.chunkContext(contextName, chunkStrategy, chunkSize);
+                setOutput(result);
+                addLog(`chunk_context(${contextName}, ${chunkStrategy}, ${chunkSize})`, result);
+                refreshContexts();
+                setIsLoading(false);
+            };
+
+            const handleGetChunk = async () => {
+                setIsLoading(true);
+                const result = await mockMCPClient.getChunk(contextName, chunkIndex);
+                setOutput(result);
+                addLog(`get_chunk(${contextName}, ${chunkIndex})`, result);
+                setIsLoading(false);
+            };
+
+            const handleSubQuery = async () => {
+                setIsLoading(true);
+                const result = await mockMCPClient.subQuery(contextName, query, chunkIndex, provider);
+                setOutput(result);
+                addLog(`sub_query(${contextName}, "${query.slice(0, 20)}...")`, result);
+                setIsLoading(false);
+            };
+
+            const handleAutoAnalyze = async () => {
+                setIsLoading(true);
+                const result = await mockMCPClient.autoAnalyze(contextName, content || undefined, goal);
+                setOutput(result);
+                addLog(`auto_analyze(${contextName}, ${goal})`, result);
+                refreshContexts();
+                setIsLoading(false);
+            };
+
+            const loadSampleContent = (type) => {
+                const samples = {
+                    code: `import asyncio
+import json
+from typing import Optional, List
+
+class RecursiveProcessor:
+    """Process large contexts recursively."""
+
+    def __init__(self, chunk_size: int = 1000):
+        self.chunk_size = chunk_size
+        self.results = []
+
+    async def process(self, content: str) -> List[str]:
+        """Main processing entry point."""
+        chunks = self._chunk_content(content)
+        tasks = [self._process_chunk(c) for c in chunks]
+        return await asyncio.gather(*tasks)
+
+    def _chunk_content(self, content: str) -> List[str]:
+        """Split content into manageable chunks."""
+        return [content[i:i+self.chunk_size]
+                for i in range(0, len(content), self.chunk_size)]
+
+    async def _process_chunk(self, chunk: str) -> str:
+        """Process individual chunk with sub-LLM."""
+        # Simulated LLM call
+        await asyncio.sleep(0.1)
+        return f"Processed: {len(chunk)} chars"`,
+
+                    logs: `2026-01-17 10:23:45 INFO  Starting RLM MCP Server
+2026-01-17 10:23:45 INFO  Loading context: user_data.json (2.3MB)
+2026-01-17 10:23:46 INFO  Context loaded: 45,231 lines, 2,345,678 chars
+2026-01-17 10:23:46 INFO  Auto-detected type: json
+2026-01-17 10:23:47 INFO  Chunking strategy: paragraphs (optimal for JSON)
+2026-01-17 10:23:47 INFO  Created 156 chunks, avg size: 15,036 chars
+2026-01-17 10:23:48 INFO  Starting parallel sub-queries (concurrency: 4)
+2026-01-17 10:23:48 INFO  Provider: ollama, Model: gemma3:12b
+2026-01-17 10:23:52 INFO  Chunk 1/156 completed (1.2s)
+2026-01-17 10:23:53 INFO  Chunk 2/156 completed (0.9s)
+2026-01-17 10:23:54 INFO  Chunk 3/156 completed (1.1s)
+2026-01-17 10:24:15 INFO  All chunks processed, aggregating results
+2026-01-17 10:24:16 INFO  Analysis complete: found 23 patterns`,
+
+                    prose: `# Recursive Language Models
+
+The key insight from the RLM paper is treating large contexts as external variables rather than stuffing them directly into the prompt.
+
+## Core Architecture
+
+Instead of feeding massive contexts (10M+ tokens) directly into the LLM:
+
+1. **Load** context as an external variable (stays out of prompt)
+2. **Inspect** structure programmatically
+3. **Chunk** strategically (lines, chars, or paragraphs)
+4. **Sub-query** recursively on chunks using smaller models
+5. **Aggregate** results for final synthesis
+
+## Benefits
+
+This approach enables:
+- Processing contexts 2 orders of magnitude beyond model context windows
+- Dramatic quality improvements over base LLMs
+- Cost-effective inference using smaller sub-models
+- Deterministic pattern matching via code execution
+
+The REPL becomes a control plane for long context, where the environment exposes tools like string slicing, regex search, and llm_query helpers.`
+                };
+                setContent(samples[type] || samples.prose);
+            };
+
+            const tabs = [
+                { id: 'load', label: 'Load Context', icon: '📥' },
+                { id: 'inspect', label: 'Inspect', icon: '🔍' },
+                { id: 'chunk', label: 'Chunk', icon: '✂️' },
+                { id: 'query', label: 'Sub-Query', icon: '💬' },
+                { id: 'auto', label: 'Auto Analyze', icon: '🤖' }
+            ];
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    {/* Header */}
+                    <header className="bg-slate-800/80 border-b border-slate-700/50 px-6 py-4">
+                        <div className="max-w-7xl mx-auto flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-bold text-lg">
+                                    R
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold">RLM MCP Server</h1>
+                                    <p className="text-sm text-slate-400">Recursive Language Model Test Interface</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-slate-400">Provider:</span>
+                                    <span className="mono text-emerald-400">ollama</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-slate-400">Model:</span>
+                                    <span className="mono text-blue-400">gemma3:12b</span>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="flex-1 flex">
+                        {/* Sidebar - Loaded Contexts */}
+                        <aside className="w-64 bg-slate-800/30 border-r border-slate-700/50 p-4">
+                            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">
+                                Loaded Contexts
+                            </h2>
+                            {contexts.length === 0 ? (
+                                <p className="text-sm text-slate-500 italic">No contexts loaded</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {contexts.map(ctx => (
+                                        <button
+                                            key={ctx.name}
+                                            onClick={() => setContextName(ctx.name)}
+                                            className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                                                contextName === ctx.name
+                                                    ? 'bg-blue-500/10 border-blue-500/30'
+                                                    : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-600'
+                                            }`}
+                                        >
+                                            <div className="font-medium text-sm">{ctx.name}</div>
+                                            <div className="text-xs text-slate-400 mt-1">
+                                                {ctx.lines.toLocaleString()} lines · {ctx.type}
+                                            </div>
+                                            {ctx.has_chunks && (
+                                                <div className="text-xs text-blue-400 mt-1">
+                                                    {ctx.chunk_count} chunks
+                                                </div>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Activity Log */}
+                            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 mt-6">
+                                Activity Log
+                            </h2>
+                            <div className="space-y-1 max-h-48 overflow-auto scrollbar-thin">
+                                {logs.map((log, i) => (
+                                    <div key={i} className="text-xs p-2 bg-slate-800/50 rounded">
+                                        <div className="flex items-center justify-between">
+                                            <span className="mono text-slate-500">{log.time}</span>
+                                            <StatusBadge status={log.status} />
+                                        </div>
+                                        <div className="mono text-slate-300 mt-1 truncate">{log.action}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </aside>
+
+                        {/* Main Content */}
+                        <main className="flex-1 p-6">
+                            <div className="max-w-4xl mx-auto">
+                                {/* Tab Navigation */}
+                                <div className="flex gap-1 mb-6 bg-slate-800/50 p-1 rounded-lg w-fit">
+                                    {tabs.map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setActiveTab(tab.id)}
+                                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+                                                activeTab === tab.id
+                                                    ? 'bg-slate-700 text-white'
+                                                    : 'text-slate-400 hover:text-slate-200'
+                                            }`}
+                                        >
+                                            <span>{tab.icon}</span>
+                                            {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Tab Content */}
+                                <div className="grid gap-6">
+                                    {activeTab === 'load' && (
+                                        <ToolCard
+                                            title="rlm_load_context"
+                                            description="Load content as an external context variable. Content stays out of the main prompt."
+                                            icon="📥"
+                                        >
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm text-slate-400 mb-1">Context Name</label>
+                                                    <input
+                                                        type="text"
+                                                        value={contextName}
+                                                        onChange={e => setContextName(e.target.value)}
+                                                        className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none"
+                                                        placeholder="my_context"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-sm text-slate-400">Content</label>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => loadSampleContent('code')} className="text-xs text-blue-400 hover:text-blue-300">
+                                                                Load Code Sample
+                                                            </button>
+                                                            <button onClick={() => loadSampleContent('logs')} className="text-xs text-blue-400 hover:text-blue-300">
+                                                                Load Logs Sample
+                                                            </button>
+                                                            <button onClick={() => loadSampleContent('prose')} className="text-xs text-blue-400 hover:text-blue-300">
+                                                                Load Prose Sample
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <textarea
+                                                        value={content}
+                                                        onChange={e => setContent(e.target.value)}
+                                                        rows={8}
+                                                        className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none resize-none scrollbar-thin"
+                                                        placeholder="Paste your content here..."
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleLoadContext}
+                                                    disabled={!content || !contextName || isLoading}
+                                                    className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 px-4 py-2 rounded font-medium text-sm transition-colors"
+                                                >
+                                                    {isLoading ? 'Loading...' : 'Load Context'}
+                                                </button>
+                                            </div>
+                                        </ToolCard>
+                                    )}
+
+                                    {activeTab === 'inspect' && (
+                                        <ToolCard
+                                            title="rlm_inspect_context"
+                                            description="Get structure info without loading content into prompt. View metadata and preview."
+                                            icon="🔍"
+                                        >
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm text-slate-400 mb-1">Context Name</label>
+                                                    <input
+                                                        type="text"
+                                                        value={contextName}
+                                                        onChange={e => setContextName(e.target.value)}
+                                                        className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleInspectContext}
+                                                    disabled={!contextName || isLoading}
+                                                    className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 px-4 py-2 rounded font-medium text-sm transition-colors"
+                                                >
+                                                    {isLoading ? 'Inspecting...' : 'Inspect Context'}
+                                                </button>
+                                            </div>
+                                        </ToolCard>
+                                    )}
+
+                                    {activeTab === 'chunk' && (
+                                        <ToolCard
+                                            title="rlm_chunk_context"
+                                            description="Split context into chunks for parallel processing. Choose strategy based on content type."
+                                            icon="✂️"
+                                        >
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm text-slate-400 mb-1">Context Name</label>
+                                                        <input
+                                                            type="text"
+                                                            value={contextName}
+                                                            onChange={e => setContextName(e.target.value)}
+                                                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm text-slate-400 mb-1">Strategy</label>
+                                                        <select
+                                                            value={chunkStrategy}
+                                                            onChange={e => setChunkStrategy(e.target.value)}
+                                                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                                        >
+                                                            <option value="lines">By Lines</option>
+                                                            <option value="chars">By Characters</option>
+                                                            <option value="paragraphs">By Paragraphs</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                {chunkStrategy !== 'paragraphs' && (
+                                                    <div>
+                                                        <label className="block text-sm text-slate-400 mb-1">
+                                                            Chunk Size ({chunkStrategy === 'lines' ? 'lines' : 'characters'})
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            value={chunkSize}
+                                                            onChange={e => setChunkSize(parseInt(e.target.value) || 50)}
+                                                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                )}
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={handleChunkContext}
+                                                        disabled={!contextName || isLoading}
+                                                        className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 px-4 py-2 rounded font-medium text-sm transition-colors"
+                                                    >
+                                                        {isLoading ? 'Chunking...' : 'Chunk Context'}
+                                                    </button>
+                                                    <button
+                                                        onClick={handleGetChunk}
+                                                        disabled={!contextName || isLoading}
+                                                        className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded font-medium text-sm transition-colors"
+                                                    >
+                                                        Get Chunk #{chunkIndex}
+                                                    </button>
+                                                    <input
+                                                        type="number"
+                                                        value={chunkIndex}
+                                                        onChange={e => setChunkIndex(parseInt(e.target.value) || 0)}
+                                                        min={0}
+                                                        className="w-20 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </ToolCard>
+                                    )}
+
+                                    {activeTab === 'query' && (
+                                        <ToolCard
+                                            title="rlm_sub_query"
+                                            description="Make sub-LLM call on a chunk. Uses Gemma 3:12B via Ollama for local inference."
+                                            icon="💬"
+                                        >
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm text-slate-400 mb-1">Context Name</label>
+                                                        <input
+                                                            type="text"
+                                                            value={contextName}
+                                                            onChange={e => setContextName(e.target.value)}
+                                                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm text-slate-400 mb-1">Provider</label>
+                                                        <select
+                                                            value={provider}
+                                                            onChange={e => setProvider(e.target.value)}
+                                                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                                        >
+                                                            <option value="ollama">Ollama (gemma3:12b)</option>
+                                                            <option value="claude-sdk">Claude SDK (haiku-4-5)</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm text-slate-400 mb-1">Query</label>
+                                                    <textarea
+                                                        value={query}
+                                                        onChange={e => setQuery(e.target.value)}
+                                                        rows={3}
+                                                        className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none resize-none"
+                                                        placeholder="What would you like to analyze in this content?"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm text-slate-400 mb-1">Chunk Index (optional)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={chunkIndex}
+                                                        onChange={e => setChunkIndex(parseInt(e.target.value) || 0)}
+                                                        min={0}
+                                                        className="w-32 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleSubQuery}
+                                                    disabled={!contextName || !query || isLoading}
+                                                    className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 px-4 py-2 rounded font-medium text-sm transition-colors"
+                                                >
+                                                    {isLoading ? 'Querying...' : 'Run Sub-Query'}
+                                                </button>
+                                            </div>
+                                        </ToolCard>
+                                    )}
+
+                                    {activeTab === 'auto' && (
+                                        <ToolCard
+                                            title="rlm_auto_analyze"
+                                            description="One-step analysis: auto-detects type, chunks, and queries. Best for quick analysis."
+                                            icon="🤖"
+                                        >
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm text-slate-400 mb-1">Context Name</label>
+                                                        <input
+                                                            type="text"
+                                                            value={contextName}
+                                                            onChange={e => setContextName(e.target.value)}
+                                                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm text-slate-400 mb-1">Goal</label>
+                                                        <select
+                                                            value={goal}
+                                                            onChange={e => setGoal(e.target.value)}
+                                                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                                        >
+                                                            <option value="summarize">Summarize</option>
+                                                            <option value="find_bugs">Find Bugs</option>
+                                                            <option value="extract_structure">Extract Structure</option>
+                                                            <option value="security_audit">Security Audit</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-sm text-slate-400">Content (optional if context already loaded)</label>
+                                                    </div>
+                                                    <textarea
+                                                        value={content}
+                                                        onChange={e => setContent(e.target.value)}
+                                                        rows={6}
+                                                        className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm mono focus:border-blue-500 focus:outline-none resize-none scrollbar-thin"
+                                                        placeholder="Paste content here, or leave empty to use already-loaded context..."
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleAutoAnalyze}
+                                                    disabled={!contextName || isLoading}
+                                                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500 px-4 py-2 rounded font-medium text-sm transition-colors"
+                                                >
+                                                    {isLoading ? 'Analyzing...' : '🚀 Run Auto-Analysis'}
+                                                </button>
+                                            </div>
+                                        </ToolCard>
+                                    )}
+
+                                    {/* Output Panel */}
+                                    {output && (
+                                        <div className="bg-slate-800/30 border border-slate-700/50 rounded-lg p-4">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <h3 className="font-semibold flex items-center gap-2">
+                                                    <span>📤</span> Output
+                                                </h3>
+                                                {output.status && <StatusBadge status={output.status} />}
+                                                {output.error && <StatusBadge status="error" />}
+                                            </div>
+                                            <JsonOutput data={output} maxHeight="300px" />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </main>
+                    </div>
+
+                    {/* Footer */}
+                    <footer className="bg-slate-800/50 border-t border-slate-700/50 px-6 py-3">
+                        <div className="max-w-7xl mx-auto flex items-center justify-between text-sm text-slate-400">
+                            <div>
+                                Based on <a href="https://arxiv.org/html/2512.24601v1" className="text-blue-400 hover:text-blue-300" target="_blank">Recursive Language Models</a> (arxiv:2512.24601)
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <span>Fork of <a href="https://github.com/richardwhiteii/rlm" className="text-blue-400 hover:text-blue-300" target="_blank">richardwhiteii/rlm</a></span>
+                                <span>•</span>
+                                <span>Modified for Gemma 3:12B</span>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
