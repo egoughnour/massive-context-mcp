@@ -1529,7 +1529,6 @@ async def rlm_auto_analyze(
     concurrency = min(concurrency, 8)
 
     # Debug: verify _load_context_impl is callable
-    import sys
     print(f"DEBUG: _load_context_impl type = {type(_load_context_impl)}", file=sys.stderr)
     print(f"DEBUG: _chunk_context_impl type = {type(_chunk_context_impl)}", file=sys.stderr)
     print(f"DEBUG: _sub_query_batch_impl type = {type(_sub_query_batch_impl)}", file=sys.stderr)
