@@ -25,7 +25,11 @@
     }
   },
   "compatibility": {
-    "platforms": ["darwin", "linux", "win32"],
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
     "runtimes": {
       "python": ">=3.10"
     }
@@ -112,6 +116,14 @@
       "description": "List all loaded contexts"
     }
   ],
-  "keywords": ["massive-context", "chunking", "sub-query", "ollama", "local-inference", "rlm", "recursive-language-model"],
+  "keywords": [
+    "massive-context",
+    "chunking",
+    "sub-query",
+    "ollama",
+    "local-inference",
+    "rlm",
+    "recursive-language-model"
+  ],
   "license": "MIT"
 }
