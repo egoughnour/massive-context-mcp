@@ -118,10 +118,14 @@ jobs:
         run: |
           npx @anthropic-ai/mcpb pack
           MCPB_FILE=$(ls *.mcpb 2>/dev/null | head -1)
-          # Rename to consistent filename for latest/download URL pattern
-          mv "$MCPB_FILE" "massive-context-mcp.mcpb"
+          # Rename to consistent filename for latest/download URL pattern (skip if already correct)
+          if [ "$MCPB_FILE" != "massive-context-mcp.mcpb" ]; then
+            mv "$MCPB_FILE" "massive-context-mcp.mcpb"
+            echo "Created: massive-context-mcp.mcpb (renamed from $MCPB_FILE)"
+          else
+            echo "Created: massive-context-mcp.mcpb (already correct name)"
+          fi
           echo "filename=massive-context-mcp.mcpb" >> $GITHUB_OUTPUT
-          echo "Created: massive-context-mcp.mcpb (renamed from $MCPB_FILE)"
 
       - name: Verify MCPB bundle
         id: verify
