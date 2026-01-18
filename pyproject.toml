@@ -1,6 +1,6 @@
 [project]
 name = "massive-context-mcp"
-version = "0.1.0"
+version = "1.0.0"
 description = "Handle 10M+ token contexts with chunking, sub-queries, and local Ollama inference"
 requires-python = ">=3.10"
 dependencies = [

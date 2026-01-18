@@ -3,7 +3,7 @@
   "name": "io.github.egoughnour/massive-context-mcp",
   "display_name": "Massive Context MCP",
   "description": "Handle 10M+ token contexts with chunking, sub-queries, and local Ollama inference. Based on the RLM pattern from arxiv.org/html/2512.24601v1.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "homepage": "https://github.com/egoughnour/massive-context-mcp",
   "repository": "https://github.com/egoughnour/massive-context-mcp",
   "license": "MIT",
@@ -26,7 +26,7 @@
     {
       "registry_name": "github-releases",
       "name": "egoughnour/massive-context-mcp",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "runtime": "uv",
       "runtime_arguments": {
         "entry_point": "src/rlm_mcp_server.py"
@@ -40,21 +40,69 @@
     }
   ],
   "tools": [
-    {"name": "rlm_system_check", "description": "Check system requirements for Ollama"},
-    {"name": "rlm_setup_ollama", "description": "Install Ollama via Homebrew"},
-    {"name": "rlm_setup_ollama_direct", "description": "Install Ollama via direct download (no sudo)"},
-    {"name": "rlm_ollama_status", "description": "Check Ollama availability"},
-    {"name": "rlm_auto_analyze", "description": "One-step analysis with auto-detection"},
-    {"name": "rlm_load_context", "description": "Load context as external variable"},
-    {"name": "rlm_inspect_context", "description": "Get structure info"},
-    {"name": "rlm_chunk_context", "description": "Chunk by lines/chars/paragraphs"},
-    {"name": "rlm_get_chunk", "description": "Retrieve specific chunk"},
-    {"name": "rlm_filter_context", "description": "Filter with regex"},
-    {"name": "rlm_exec", "description": "Execute Python code (sandboxed)"},
-    {"name": "rlm_sub_query", "description": "Make sub-LLM call on chunk"},
-    {"name": "rlm_sub_query_batch", "description": "Process chunks in parallel"},
-    {"name": "rlm_store_result", "description": "Store sub-call result"},
-    {"name": "rlm_get_results", "description": "Retrieve stored results"},
-    {"name": "rlm_list_contexts", "description": "List all loaded contexts"}
+    {
+      "name": "rlm_system_check",
+      "description": "Check system requirements for Ollama"
+    },
+    {
+      "name": "rlm_setup_ollama",
+      "description": "Install Ollama via Homebrew"
+    },
+    {
+      "name": "rlm_setup_ollama_direct",
+      "description": "Install Ollama via direct download (no sudo)"
+    },
+    {
+      "name": "rlm_ollama_status",
+      "description": "Check Ollama availability"
+    },
+    {
+      "name": "rlm_auto_analyze",
+      "description": "One-step analysis with auto-detection"
+    },
+    {
+      "name": "rlm_load_context",
+      "description": "Load context as external variable"
+    },
+    {
+      "name": "rlm_inspect_context",
+      "description": "Get structure info"
+    },
+    {
+      "name": "rlm_chunk_context",
+      "description": "Chunk by lines/chars/paragraphs"
+    },
+    {
+      "name": "rlm_get_chunk",
+      "description": "Retrieve specific chunk"
+    },
+    {
+      "name": "rlm_filter_context",
+      "description": "Filter with regex"
+    },
+    {
+      "name": "rlm_exec",
+      "description": "Execute Python code (sandboxed)"
+    },
+    {
+      "name": "rlm_sub_query",
+      "description": "Make sub-LLM call on chunk"
+    },
+    {
+      "name": "rlm_sub_query_batch",
+      "description": "Process chunks in parallel"
+    },
+    {
+      "name": "rlm_store_result",
+      "description": "Store sub-call result"
+    },
+    {
+      "name": "rlm_get_results",
+      "description": "Retrieve stored results"
+    },
+    {
+      "name": "rlm_list_contexts",
+      "description": "List all loaded contexts"
+    }
   ]
 }
