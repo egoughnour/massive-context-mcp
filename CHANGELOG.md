@@ -54,6 +54,7 @@ Initial release. Based on the [Recursive Language Model pattern](https://arxiv.o
   - GitHub Actions workflow for testing (Ubuntu, macOS, Python 3.10-3.12)
   - GitHub Actions workflow for release (MCPB packing, GitHub Releases)
   - MCP Registry publishing via OIDC authentication
+  - Semantic release automation (version bump, changelog, tag on conventional commits)
   - Linting with Ruff
   - Type checking with mypy
 
