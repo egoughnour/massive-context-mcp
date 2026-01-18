@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "massive-context-mcp",
   "display_name": "Massive Context MCP",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Handle 10M+ token contexts with chunking, sub-queries, and local Ollama inference",
   "long_description": "Implements the Recursive Language Model pattern (arxiv.org/html/2512.24601v1) for massive context handling. Load huge contexts as external variables, chunk them, run parallel sub-queries via Ollama (free local) or Claude, and aggregate results. Includes automated Ollama setup for macOS.",
   "author": {
@@ -19,7 +19,9 @@
     "entry_point": "src/rlm_mcp_server.py",
     "mcp_config": {
       "command": "uvx",
-      "args": ["massive-context-mcp"],
+      "args": [
+        "massive-context-mcp"
+      ],
       "env": {
         "RLM_DATA_DIR": "${user_config.rlm_data_dir}",
         "OLLAMA_URL": "${user_config.ollama_url}"

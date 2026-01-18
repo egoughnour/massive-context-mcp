@@ -1,6 +1,6 @@
 [project]
 name = "massive-context-mcp"
-version = "1.0.0"
+version = "2.0.0"
 description = "Handle 10M+ token contexts with chunking, sub-queries, and local Ollama inference"
 readme = "README.md"
 license = { text = "MIT" }
