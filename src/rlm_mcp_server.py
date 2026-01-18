@@ -49,10 +49,7 @@ for directory in [CONTEXTS_DIR, CHUNKS_DIR, RESULTS_DIR]:
 contexts: dict[str, dict] = {}
 
 # Initialize FastMCP server
-mcp = FastMCP(
-    "massive-context-mcp",
-    description="Handle 10M+ token contexts with chunking, sub-queries, and local Ollama inference",
-)
+mcp = FastMCP("massive-context-mcp")
 
 # Default models per provider
 DEFAULT_MODELS = {
