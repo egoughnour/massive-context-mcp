@@ -175,10 +175,15 @@ jobs:
 
       - name: Download mcp-publisher
         run: |
-          # Download latest mcp-publisher from GitHub releases
-          curl -fsSL -o mcp-publisher https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher-linux-amd64
+          # Get latest version tag
+          LATEST=$(curl -sI https://github.com/modelcontextprotocol/registry/releases/latest | grep -i '^location:' | sed 's/.*tag\/v//' | tr -d '\r\n')
+          echo "Latest mcp-publisher version: $LATEST"
+
+          # Download and extract
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v${LATEST}/mcp-publisher_${LATEST}_linux_amd64.tar.gz" -o mcp-publisher.tar.gz
+          tar xzf mcp-publisher.tar.gz
           chmod +x mcp-publisher
-          ./mcp-publisher --version || echo "mcp-publisher ready"
+          ./mcp-publisher --version
 
       - name: Authenticate with GitHub OIDC
         run: |
