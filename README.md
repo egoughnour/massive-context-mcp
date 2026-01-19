@@ -575,7 +575,7 @@ rlm_sub_query_batch(
 )
 ```
 
-Result: Complete character arc across the novel — Pierre's journey from idealist to prisoner to husband, Natásha's growth, Prince Andrew's philosophical struggles — all for ~$0.03.
+Result: Complete character arc across the novel — Pierre's journey from idealist to prisoner to husband, Natásha's growth, Nikolái Rostóv's journey from soldier to landowner — all for ~$0.03.
 
 | Metric | Value |
 |--------|-------|
