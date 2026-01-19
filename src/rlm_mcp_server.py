@@ -74,9 +74,28 @@ GEMMA3_12B_RAM_GB = 8
 # Code Firewall Integration
 # =============================================================================
 # Optional integration with code-firewall-mcp for pre-execution security checks.
-# Enable by setting RLM_FIREWALL_ENABLED=1 and optionally RLM_FIREWALL_URL.
+# Auto-enabled when code-firewall-mcp is installed (pip install massive-context-mcp[firewall]).
+# Can be explicitly controlled via RLM_FIREWALL_ENABLED env var.
 
-FIREWALL_ENABLED = os.environ.get("RLM_FIREWALL_ENABLED", "0").lower() in ("1", "true", "yes")
+# Check if code-firewall-mcp is installed
+try:
+    from importlib.metadata import version as pkg_version
+    pkg_version("code-firewall-mcp")
+    HAS_FIREWALL_PACKAGE = True
+except Exception:
+    HAS_FIREWALL_PACKAGE = False
+
+# Firewall is enabled if:
+# 1. Explicitly set via env var, OR
+# 2. code-firewall-mcp package is installed (auto-enable)
+_firewall_env = os.environ.get("RLM_FIREWALL_ENABLED", "").lower()
+if _firewall_env:
+    # Explicit setting takes precedence
+    FIREWALL_ENABLED = _firewall_env in ("1", "true", "yes")
+else:
+    # Auto-enable if package is installed
+    FIREWALL_ENABLED = HAS_FIREWALL_PACKAGE
+
 FIREWALL_URL = os.environ.get("RLM_FIREWALL_URL", "http://localhost:11434")
 FIREWALL_EMBEDDING_MODEL = os.environ.get("RLM_FIREWALL_MODEL", "nomic-embed-text")
 FIREWALL_SIMILARITY_THRESHOLD = float(os.environ.get("RLM_FIREWALL_THRESHOLD", "0.85"))
@@ -1734,9 +1753,13 @@ async def rlm_firewall_status() -> dict:
     Returns information about whether the firewall is enabled, the Ollama
     endpoint being used, and whether dangerous code patterns will be blocked.
 
+    The firewall is auto-enabled when code-firewall-mcp is installed:
+        pip install massive-context-mcp[firewall]
+
     Returns:
         {
             "enabled": bool,
+            "package_installed": bool,
             "ollama_url": str,
             "embedding_model": str,
             "similarity_threshold": float,
@@ -1745,6 +1768,7 @@ async def rlm_firewall_status() -> dict:
     """
     result = {
         "enabled": FIREWALL_ENABLED,
+        "package_installed": HAS_FIREWALL_PACKAGE,
         "ollama_url": FIREWALL_URL,
         "embedding_model": FIREWALL_EMBEDDING_MODEL,
         "similarity_threshold": FIREWALL_SIMILARITY_THRESHOLD,
@@ -1752,7 +1776,10 @@ async def rlm_firewall_status() -> dict:
     }
 
     if not FIREWALL_ENABLED:
-        result["message"] = "Firewall is disabled. Set RLM_FIREWALL_ENABLED=1 to enable."
+        if HAS_FIREWALL_PACKAGE:
+            result["message"] = "Firewall package installed but disabled via RLM_FIREWALL_ENABLED=0."
+        else:
+            result["message"] = "Firewall disabled. Install with: pip install massive-context-mcp[firewall]"
         return result
 
     if not HAS_HTTPX:
