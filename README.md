@@ -34,6 +34,19 @@ uvx massive-context-mcp
 pip install massive-context-mcp
 ```
 
+**With Optional Extras:**
+
+```bash
+# With Code Firewall integration (security filter for rlm_exec)
+pip install massive-context-mcp[firewall]
+
+# With Claude Agent SDK (for programmatic Claude API access)
+pip install massive-context-mcp[claude]
+
+# With all extras
+pip install massive-context-mcp[firewall,claude]
+```
+
 **Option 2: Claude Desktop One-Click**
 
 Download the `.mcpb` from [Releases](https://github.com/egoughnour/massive-context-mcp/releases) and double-click to install.
@@ -210,6 +223,33 @@ result = {
 | Answer "Why did X happen?" | `rlm_sub_query` | Requires inference and reasoning |
 
 **Tip**: For large contexts, combine both — use `rlm_exec` to filter/extract, then `rlm_sub_query` for semantic analysis of filtered results.
+
+### Code Firewall Integration (Optional)
+
+For enhanced security, integrate [code-firewall-mcp](https://github.com/egoughnour/code-firewall-mcp) to filter dangerous code patterns before execution:
+
+```bash
+pip install massive-context-mcp[firewall]
+```
+
+When installed, `rlm_exec` can automatically check code against a blacklist of known dangerous patterns (e.g., `os.system()`, `eval()`, `subprocess` with `shell=True`). The firewall uses structural similarity matching — normalizing code to its skeleton and comparing against blacklisted patterns via embeddings.
+
+**How it works:**
+1. Code is parsed to a syntax tree and normalized (identifiers → `_`, strings → `"S"`)
+2. Normalized structure is embedded via Ollama
+3. Similarity is checked against blacklisted patterns in ChromaDB
+4. Code is blocked if similarity exceeds threshold (default: 0.85)
+
+**Configuration** (environment variables):
+- `RLM_FIREWALL_ENABLED=true` — Enable firewall checks (auto-enabled when package installed)
+- `RLM_FIREWALL_MODE=warn|block` — Warn or block on matches (default: `warn`)
+
+**Example blocked patterns:**
+- `os.system(user_input)` — Command injection
+- `eval(untrusted_data)` — Code injection
+- `subprocess.Popen(..., shell=True)` — Shell injection
+
+Use `rlm_firewall_status` to check firewall availability and configuration.
 
 ## Providers & Auto-Detection
 
@@ -520,30 +560,45 @@ Result: Complete character arc across the novel — Pierre's journey from ideali
 
 ## Data Storage
 
-```
-$RLM_DATA_DIR/
-├── contexts/     # Raw contexts (.txt + .meta.json)
-├── chunks/       # Chunked versions (by context name)
-└── results/      # Stored sub-call results (.jsonl)
+```mermaid
+graph TD
+    A[("$RLM_DATA_DIR")] --> B["📁 contexts/"]
+    A --> C["📁 chunks/"]
+    A --> D["📁 results/"]
+
+    B --> B1[".txt files"]
+    B --> B2[".meta.json"]
+    C --> C1["by context name"]
+    D --> D1[".jsonl files"]
+
+    style A fill:#339af0,color:#fff
+    style B fill:#51cf66,color:#fff
+    style C fill:#51cf66,color:#fff
+    style D fill:#51cf66,color:#fff
 ```
 
 Contexts persist across sessions. Chunked contexts are cached for reuse.
 
 ## Architecture
 
-```
-Claude Code
-    │
-    ▼
-RLM MCP Server
-    │
-    ├─► rlm_ollama_status ─► Check availability (cached 60s)
-    │
-    └─► provider="auto" (default)
-            │
-            ├─► ollama (if running) ─► Local LLM (gemma3:12b) ─► $0
-            │
-            └─► claude-sdk (fallback) ─► Anthropic API ─► ~$0.80/1M
+```mermaid
+flowchart TD
+    A[Claude Code] --> B[RLM MCP Server]
+    B --> C{rlm_ollama_status}
+    C -->|cached 60s| D{provider = auto}
+
+    D -->|Ollama running| E[🦙 Ollama<br/>gemma3:12b]
+    D -->|Ollama unavailable| F[☁️ Claude SDK<br/>claude-haiku-4-5]
+
+    E --> G[["💰 $0<br/>Free local inference"]]
+    F --> H[["💰 ~$0.80/1M<br/>Cloud inference"]]
+
+    style A fill:#ff922b,color:#fff
+    style B fill:#339af0,color:#fff
+    style E fill:#51cf66,color:#fff
+    style F fill:#748ffc,color:#fff
+    style G fill:#51cf66,color:#fff
+    style H fill:#748ffc,color:#fff
 ```
 
 The key insight: **context stays external**. Instead of stuffing 2MB into your prompt, load it once, chunk it, and make targeted sub-queries. Claude orchestrates; sub-models do the heavy lifting.
