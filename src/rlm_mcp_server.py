@@ -80,6 +80,7 @@ GEMMA3_12B_RAM_GB = 8
 # Check if code-firewall-mcp is installed
 try:
     from importlib.metadata import version as pkg_version
+
     pkg_version("code-firewall-mcp")
     HAS_FIREWALL_PACKAGE = True
 except Exception:
@@ -132,48 +133,136 @@ async def _check_code_firewall(code: str) -> dict:
 
     # Security-sensitive identifiers to preserve (same as code-firewall-mcp)
     SECURITY_SENSITIVE = {
-        "eval", "exec", "compile", "__import__",
-        "system", "popen", "spawn", "fork", "execl", "execle", "execlp",
-        "execv", "execve", "execvp", "spawnl", "spawnle", "spawnlp",
-        "spawnv", "spawnve", "spawnvp",
-        "subprocess", "Popen", "call", "check_call", "check_output", "run",
+        "eval",
+        "exec",
+        "compile",
+        "__import__",
+        "system",
+        "popen",
+        "spawn",
+        "fork",
+        "execl",
+        "execle",
+        "execlp",
+        "execv",
+        "execve",
+        "execvp",
+        "spawnl",
+        "spawnle",
+        "spawnlp",
+        "spawnv",
+        "spawnve",
+        "spawnvp",
+        "subprocess",
+        "Popen",
+        "call",
+        "check_call",
+        "check_output",
+        "run",
         "shell",
-        "os", "remove", "unlink", "rmdir", "removedirs", "rename", "chmod",
-        "chown", "link", "symlink", "mkdir", "makedirs",
-        "open", "read", "write", "truncate",
-        "socket", "connect", "bind", "listen", "accept", "send", "recv",
-        "urlopen", "urlretrieve", "Request",
-        "load", "loads", "pickle", "unpickle", "marshal",
-        "__class__", "__bases__", "__subclasses__", "__mro__",
-        "__globals__", "__code__", "__builtins__",
-        "ctypes", "cffi", "CDLL", "windll", "oledll",
-        "getattr", "setattr", "delattr", "hasattr",
+        "os",
+        "remove",
+        "unlink",
+        "rmdir",
+        "removedirs",
+        "rename",
+        "chmod",
+        "chown",
+        "link",
+        "symlink",
+        "mkdir",
+        "makedirs",
+        "open",
+        "read",
+        "write",
+        "truncate",
+        "socket",
+        "connect",
+        "bind",
+        "listen",
+        "accept",
+        "send",
+        "recv",
+        "urlopen",
+        "urlretrieve",
+        "Request",
+        "load",
+        "loads",
+        "pickle",
+        "unpickle",
+        "marshal",
+        "__class__",
+        "__bases__",
+        "__subclasses__",
+        "__mro__",
+        "__globals__",
+        "__code__",
+        "__builtins__",
+        "ctypes",
+        "cffi",
+        "CDLL",
+        "windll",
+        "oledll",
+        "getattr",
+        "setattr",
+        "delattr",
+        "hasattr",
     }
 
     # Python keywords to preserve
     keywords = {
-        'import', 'from', 'def', 'class', 'return', 'if', 'else', 'elif',
-        'for', 'while', 'try', 'except', 'finally', 'with', 'as', 'async',
-        'await', 'yield', 'raise', 'pass', 'break', 'continue', 'and', 'or',
-        'not', 'in', 'is', 'lambda', 'global', 'nonlocal', 'True', 'False', 'None',
+        "import",
+        "from",
+        "def",
+        "class",
+        "return",
+        "if",
+        "else",
+        "elif",
+        "for",
+        "while",
+        "try",
+        "except",
+        "finally",
+        "with",
+        "as",
+        "async",
+        "await",
+        "yield",
+        "raise",
+        "pass",
+        "break",
+        "continue",
+        "and",
+        "or",
+        "not",
+        "in",
+        "is",
+        "lambda",
+        "global",
+        "nonlocal",
+        "True",
+        "False",
+        "None",
     }
     preserve = keywords | SECURITY_SENSITIVE
 
     # Normalize code
     normalized = code
     # Strip comments
-    normalized = re.sub(r'#.*$', '', normalized, flags=re.MULTILINE)
+    normalized = re.sub(r"#.*$", "", normalized, flags=re.MULTILINE)
 
     # Replace identifiers (except preserved ones)
     def replace_id(m):
-        return m.group(0) if m.group(0) in preserve else '_'
-    normalized = re.sub(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', replace_id, normalized)
+        return m.group(0) if m.group(0) in preserve else "_"
+
+    normalized = re.sub(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", replace_id, normalized)
 
     # Replace strings and numbers
     normalized = re.sub(r'"[^"]*"', '"S"', normalized)
     normalized = re.sub(r"'[^']*'", '"S"', normalized)
-    normalized = re.sub(r'\b\d+\.?\d*\b', 'N', normalized)
-    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    normalized = re.sub(r"\b\d+\.?\d*\b", "N", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
 
     # Quick check: if no security-sensitive identifiers, likely safe
     has_sensitive = any(s in normalized for s in SECURITY_SENSITIVE)
@@ -1800,7 +1889,9 @@ async def rlm_firewall_status() -> dict:
                 if result["embedding_model_available"]:
                     result["message"] = "Firewall is active. Dangerous code patterns will be blocked."
                 else:
-                    result["message"] = f"Firewall enabled but {FIREWALL_EMBEDDING_MODEL} not found. Run: ollama pull {FIREWALL_EMBEDDING_MODEL}"
+                    result["message"] = (
+                        f"Firewall enabled but {FIREWALL_EMBEDDING_MODEL} not found. Run: ollama pull {FIREWALL_EMBEDDING_MODEL}"
+                    )
     except httpx.ConnectError:
         result["message"] = f"Cannot connect to Ollama at {FIREWALL_URL}. Firewall checks will be skipped."
     except Exception as e:
