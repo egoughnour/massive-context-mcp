@@ -6,7 +6,7 @@
 [![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue?style=flat-square&logo=anthropic&logoColor=white)](https://registry.mcp.so/servers/io.github.egoughnour/massive-context-mcp)
 [![Claude Desktop](https://img.shields.io/badge/Claude-Desktop-orange?style=flat-square&logo=anthropic&logoColor=white)](https://github.com/egoughnour/massive-context-mcp/releases/latest/download/massive-context-mcp.mcpb)
 [![Tests](https://img.shields.io/github/actions/workflow/status/egoughnour/massive-context-mcp/test.yml?style=flat-square&logo=github-actions&label=Tests)](https://github.com/egoughnour/massive-context-mcp/actions/workflows/test.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/egoughnour/massive-context-mcp/release.yml?style=flat-square&logo=github-actions&label=Release)](https://github.com/egoughnour/massive-context-mcp/actions/workflows/release.yml)
+[![Release](https://github.com/egoughnour/massive-context-mcp/actions/workflows/release.yml/badge.svg?event=push)](https://github.com/egoughnour/massive-context-mcp/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 Handle massive contexts (10M+ tokens) with chunking, sub-queries, and free local inference via Ollama.
