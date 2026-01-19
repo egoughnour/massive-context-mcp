@@ -9,6 +9,8 @@
 [![Release](https://github.com/egoughnour/massive-context-mcp/actions/workflows/release.yml/badge.svg?event=push)](https://github.com/egoughnour/massive-context-mcp/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
+[![Top Language](https://img.shields.io/github/languages/top/egoughnour/massive-context-mcp?style=flat-square&color=3379ef)](https://github.com/egoughnour/massive-context-mcp/languages) [![Code Size](https://img.shields.io/github/languages/code-size/egoughnour/massive-context-mcp?style=flat-square&color=3379ef)](https://github.com/egoughnour/massive-context-mcp) [![Last Commit](https://img.shields.io/github/last-commit/egoughnour/massive-context-mcp?style=flat-square&color=2579ef&logo=github)](https://github.com/egoughnour/massive-context-mcp/commits/main) [![Repository Size](https://img.shields.io/github/repo-size/egoughnour/massive-context-mcp?style=flat-square&color=3379ef)](https://github.com/egoughnour/massive-context-mcp)
+
 Handle massive contexts (10M+ tokens) with chunking, sub-queries, and free local inference via Ollama.
 
 ```mermaid
