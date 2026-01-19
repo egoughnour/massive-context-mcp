@@ -10,8 +10,35 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 Handle massive contexts (10M+ tokens) with chunking, sub-queries, and free local inference via Ollama.
-![Tools in Claude Desktop](assets/tool_selection.png)
+
+```mermaid
+flowchart TD
+    A[Claude Code] --> B[RLM MCP Server]
+    B --> C{rlm_ollama_status}
+    C -->|cached 60s| D{provider = auto}
+
+    D -->|Ollama running| E[🦙 Ollama<br/>gemma3:12b]
+    D -->|Ollama unavailable| F[☁️ Claude SDK<br/>claude-haiku-4-5]
+
+    E --> G[["💰 $0<br/>Free local inference"]]
+    F --> H[["💰 ~$0.80/1M<br/>Cloud inference"]]
+
+    style A fill:#ff922b,color:#fff
+    style B fill:#339af0,color:#fff
+    style E fill:#51cf66,color:#fff
+    style F fill:#748ffc,color:#fff
+    style G fill:#51cf66,color:#fff
+    style H fill:#748ffc,color:#fff
+```
+
 Based on the [Recursive Language Model pattern](https://arxiv.org/html/2512.24601v1). Inspired by [richardwhiteii/rlm](https://github.com/richardwhiteii/rlm).
+
+<details>
+<summary>📸 Screenshots</summary>
+
+![Tools in Claude Desktop](assets/tool_selection.png)
+
+</details>
 
 ## Core Idea
 
@@ -578,32 +605,6 @@ graph TD
 ```
 
 Contexts persist across sessions. Chunked contexts are cached for reuse.
-
-## Architecture
-
-```mermaid
-flowchart TD
-    A[Claude Code] --> B[RLM MCP Server]
-    B --> C{rlm_ollama_status}
-    C -->|cached 60s| D{provider = auto}
-
-    D -->|Ollama running| E[🦙 Ollama<br/>gemma3:12b]
-    D -->|Ollama unavailable| F[☁️ Claude SDK<br/>claude-haiku-4-5]
-
-    E --> G[["💰 $0<br/>Free local inference"]]
-    F --> H[["💰 ~$0.80/1M<br/>Cloud inference"]]
-
-    style A fill:#ff922b,color:#fff
-    style B fill:#339af0,color:#fff
-    style E fill:#51cf66,color:#fff
-    style F fill:#748ffc,color:#fff
-    style G fill:#51cf66,color:#fff
-    style H fill:#748ffc,color:#fff
-```
-
-The key insight: **context stays external**. Instead of stuffing 2MB into your prompt, load it once, chunk it, and make targeted sub-queries. Claude orchestrates; sub-models do the heavy lifting.
-
-**Cost optimization**: RLM automatically uses free local inference when Ollama is available, falling back to Claude API only when needed.
 
 ## Learning Prompts
 
