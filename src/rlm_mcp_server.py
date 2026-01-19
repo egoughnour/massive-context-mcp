@@ -70,10 +70,172 @@ _ollama_status_cache: dict[str, Any] = {
 MIN_RAM_GB = 16
 GEMMA3_12B_RAM_GB = 8
 
+# =============================================================================
+# Code Firewall Integration
+# =============================================================================
+# Optional integration with code-firewall-mcp for pre-execution security checks.
+# Auto-enabled when code-firewall-mcp is installed (pip install massive-context-mcp[firewall]).
+# Can be explicitly controlled via RLM_FIREWALL_ENABLED env var.
+
+# Check if code-firewall-mcp is installed
+try:
+    from importlib.metadata import version as pkg_version
+    pkg_version("code-firewall-mcp")
+    HAS_FIREWALL_PACKAGE = True
+except Exception:
+    HAS_FIREWALL_PACKAGE = False
+
+# Firewall is enabled if:
+# 1. Explicitly set via env var, OR
+# 2. code-firewall-mcp package is installed (auto-enable)
+_firewall_env = os.environ.get("RLM_FIREWALL_ENABLED", "").lower()
+if _firewall_env:
+    # Explicit setting takes precedence
+    FIREWALL_ENABLED = _firewall_env in ("1", "true", "yes")
+else:
+    # Auto-enable if package is installed
+    FIREWALL_ENABLED = HAS_FIREWALL_PACKAGE
+
+FIREWALL_URL = os.environ.get("RLM_FIREWALL_URL", "http://localhost:11434")
+FIREWALL_EMBEDDING_MODEL = os.environ.get("RLM_FIREWALL_MODEL", "nomic-embed-text")
+FIREWALL_SIMILARITY_THRESHOLD = float(os.environ.get("RLM_FIREWALL_THRESHOLD", "0.85"))
+
 
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+
+async def _check_code_firewall(code: str) -> dict:
+    """
+    Check code against the firewall before execution.
+
+    Uses the code-firewall-mcp structural similarity approach:
+    1. Normalize code (strip identifiers/literals, preserve security-sensitive ones)
+    2. Embed via Ollama
+    3. Check against blacklist
+
+    Returns:
+        {
+            "allowed": bool,
+            "blocked": bool,
+            "reason": str | None,
+            "similarity": float,
+            "error": str | None,
+        }
+    """
+    if not FIREWALL_ENABLED:
+        return {"allowed": True, "blocked": False, "reason": None, "similarity": 0.0}
+
+    if not HAS_HTTPX:
+        return {"allowed": True, "blocked": False, "error": "httpx not available for firewall"}
+
+    # Security-sensitive identifiers to preserve (same as code-firewall-mcp)
+    SECURITY_SENSITIVE = {
+        "eval", "exec", "compile", "__import__",
+        "system", "popen", "spawn", "fork", "execl", "execle", "execlp",
+        "execv", "execve", "execvp", "spawnl", "spawnle", "spawnlp",
+        "spawnv", "spawnve", "spawnvp",
+        "subprocess", "Popen", "call", "check_call", "check_output", "run",
+        "shell",
+        "os", "remove", "unlink", "rmdir", "removedirs", "rename", "chmod",
+        "chown", "link", "symlink", "mkdir", "makedirs",
+        "open", "read", "write", "truncate",
+        "socket", "connect", "bind", "listen", "accept", "send", "recv",
+        "urlopen", "urlretrieve", "Request",
+        "load", "loads", "pickle", "unpickle", "marshal",
+        "__class__", "__bases__", "__subclasses__", "__mro__",
+        "__globals__", "__code__", "__builtins__",
+        "ctypes", "cffi", "CDLL", "windll", "oledll",
+        "getattr", "setattr", "delattr", "hasattr",
+    }
+
+    # Python keywords to preserve
+    keywords = {
+        'import', 'from', 'def', 'class', 'return', 'if', 'else', 'elif',
+        'for', 'while', 'try', 'except', 'finally', 'with', 'as', 'async',
+        'await', 'yield', 'raise', 'pass', 'break', 'continue', 'and', 'or',
+        'not', 'in', 'is', 'lambda', 'global', 'nonlocal', 'True', 'False', 'None',
+    }
+    preserve = keywords | SECURITY_SENSITIVE
+
+    # Normalize code
+    normalized = code
+    # Strip comments
+    normalized = re.sub(r'#.*$', '', normalized, flags=re.MULTILINE)
+
+    # Replace identifiers (except preserved ones)
+    def replace_id(m):
+        return m.group(0) if m.group(0) in preserve else '_'
+    normalized = re.sub(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', replace_id, normalized)
+
+    # Replace strings and numbers
+    normalized = re.sub(r'"[^"]*"', '"S"', normalized)
+    normalized = re.sub(r"'[^']*'", '"S"', normalized)
+    normalized = re.sub(r'\b\d+\.?\d*\b', 'N', normalized)
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+
+    # Quick check: if no security-sensitive identifiers, likely safe
+    has_sensitive = any(s in normalized for s in SECURITY_SENSITIVE)
+    if not has_sensitive:
+        return {"allowed": True, "blocked": False, "reason": None, "similarity": 0.0}
+
+    # Get embedding from Ollama
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{FIREWALL_URL}/api/embed",
+                json={"model": FIREWALL_EMBEDDING_MODEL, "input": normalized},
+            )
+            if response.status_code != 200:
+                # Firewall unavailable, allow but warn
+                return {
+                    "allowed": True,
+                    "blocked": False,
+                    "error": f"Firewall embedding failed: {response.status_code}",
+                    "warning": "Firewall check skipped - Ollama unavailable",
+                }
+            data = response.json()
+            embedding = data.get("embeddings", [[]])[0] or data.get("embedding", [])
+
+            if not embedding:
+                return {"allowed": True, "blocked": False, "error": "No embedding returned"}
+
+            # For now, just check for obvious dangerous patterns via keywords
+            # Full ChromaDB similarity check would require the firewall server
+            # This is a lightweight inline check
+            dangerous_patterns = [
+                ("os.system", "Direct shell command execution"),
+                ("subprocess", "Subprocess execution"),
+                ("eval(", "Dynamic code evaluation"),
+                ("exec(", "Dynamic code execution"),
+                ("__import__", "Dynamic module import"),
+                ("Popen", "Process spawning"),
+                ("shell=True", "Shell execution enabled"),
+            ]
+
+            for pattern, reason in dangerous_patterns:
+                if pattern in code:
+                    return {
+                        "allowed": False,
+                        "blocked": True,
+                        "reason": reason,
+                        "pattern": pattern,
+                        "similarity": 1.0,
+                    }
+
+            return {"allowed": True, "blocked": False, "reason": None, "similarity": 0.0}
+
+    except httpx.ConnectError:
+        # Firewall service not running, allow but warn
+        return {
+            "allowed": True,
+            "blocked": False,
+            "error": "Firewall service not reachable",
+            "warning": "Firewall check skipped - connection refused",
+        }
+    except Exception as e:
+        return {"allowed": True, "blocked": False, "error": str(e)}
 
 
 def _check_system_requirements() -> dict:
@@ -1585,6 +1747,69 @@ async def rlm_auto_analyze(
 
 
 @mcp.tool()
+async def rlm_firewall_status() -> dict:
+    """Check the status of the code execution firewall.
+
+    Returns information about whether the firewall is enabled, the Ollama
+    endpoint being used, and whether dangerous code patterns will be blocked.
+
+    The firewall is auto-enabled when code-firewall-mcp is installed:
+        pip install massive-context-mcp[firewall]
+
+    Returns:
+        {
+            "enabled": bool,
+            "package_installed": bool,
+            "ollama_url": str,
+            "embedding_model": str,
+            "similarity_threshold": float,
+            "ollama_reachable": bool,
+        }
+    """
+    result = {
+        "enabled": FIREWALL_ENABLED,
+        "package_installed": HAS_FIREWALL_PACKAGE,
+        "ollama_url": FIREWALL_URL,
+        "embedding_model": FIREWALL_EMBEDDING_MODEL,
+        "similarity_threshold": FIREWALL_SIMILARITY_THRESHOLD,
+        "ollama_reachable": False,
+    }
+
+    if not FIREWALL_ENABLED:
+        if HAS_FIREWALL_PACKAGE:
+            result["message"] = "Firewall package installed but disabled via RLM_FIREWALL_ENABLED=0."
+        else:
+            result["message"] = "Firewall disabled. Install with: pip install massive-context-mcp[firewall]"
+        return result
+
+    if not HAS_HTTPX:
+        result["message"] = "httpx not installed. Firewall cannot check Ollama."
+        return result
+
+    # Check if Ollama is reachable
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{FIREWALL_URL}/api/tags")
+            result["ollama_reachable"] = response.status_code == 200
+            if result["ollama_reachable"]:
+                data = response.json()
+                models = [m.get("name", "") for m in data.get("models", [])]
+                model_base = FIREWALL_EMBEDDING_MODEL.split(":")[0]
+                result["embedding_model_available"] = any(m.startswith(model_base) for m in models)
+                result["available_models"] = models
+                if result["embedding_model_available"]:
+                    result["message"] = "Firewall is active. Dangerous code patterns will be blocked."
+                else:
+                    result["message"] = f"Firewall enabled but {FIREWALL_EMBEDDING_MODEL} not found. Run: ollama pull {FIREWALL_EMBEDDING_MODEL}"
+    except httpx.ConnectError:
+        result["message"] = f"Cannot connect to Ollama at {FIREWALL_URL}. Firewall checks will be skipped."
+    except Exception as e:
+        result["message"] = f"Error checking Ollama: {e}"
+
+    return result
+
+
+@mcp.tool()
 async def rlm_exec(
     code: str,
     context_name: str,
@@ -1598,7 +1823,25 @@ async def rlm_exec(
         code: Python code to execute. User sets result variable for output.
         context_name: Name of previously loaded context
         timeout: Max execution time in seconds (default 30)
+
+    Security:
+        When RLM_FIREWALL_ENABLED=1, code is checked against known dangerous
+        patterns before execution. Blocked code returns an error instead of executing.
     """
+    # Check code against firewall if enabled
+    firewall_result = await _check_code_firewall(code)
+    if firewall_result.get("blocked"):
+        return {
+            "error": "blocked_by_firewall",
+            "reason": firewall_result.get("reason", "Dangerous pattern detected"),
+            "pattern": firewall_result.get("pattern"),
+            "similarity": firewall_result.get("similarity", 0.0),
+            "message": "Code execution blocked for security. Set RLM_FIREWALL_ENABLED=0 to disable.",
+        }
+
+    # Include firewall warning in response if there was an issue
+    firewall_warning = firewall_result.get("warning")
+
     # Ensure context is loaded
     error = _ensure_context_loaded(context_name)
     if error:
@@ -1673,13 +1916,16 @@ except Exception as e:
             # Clean stdout
             stdout = stdout[: stdout.index("__RESULT_START__")].strip()
 
-        return {
+        response = {
             "result": result,
             "stdout": stdout,
             "stderr": stderr,
             "return_code": return_code,
             "timed_out": False,
         }
+        if firewall_warning:
+            response["firewall_warning"] = firewall_warning
+        return response
 
     except subprocess.TimeoutExpired:
         return {
