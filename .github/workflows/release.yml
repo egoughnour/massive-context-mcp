@@ -116,21 +116,23 @@ jobs:
       - name: Pack MCPB bundle
         id: pack
         run: |
+          VERSION="${{ steps.version.outputs.version }}"
           npx @anthropic-ai/mcpb pack
           MCPB_FILE=$(ls *.mcpb 2>/dev/null | head -1)
-          # Rename to consistent filename for latest/download URL pattern (skip if already correct)
-          if [ "$MCPB_FILE" != "massive-context-mcp.mcpb" ]; then
-            mv "$MCPB_FILE" "massive-context-mcp.mcpb"
-            echo "Created: massive-context-mcp.mcpb (renamed from $MCPB_FILE)"
+          # Rename to include version tag
+          VERSIONED_FILENAME="massive-context-mcp-v${VERSION}.mcpb"
+          if [ "$MCPB_FILE" != "$VERSIONED_FILENAME" ]; then
+            mv "$MCPB_FILE" "$VERSIONED_FILENAME"
+            echo "Created: $VERSIONED_FILENAME (renamed from $MCPB_FILE)"
           else
-            echo "Created: massive-context-mcp.mcpb (already correct name)"
+            echo "Created: $VERSIONED_FILENAME (already correct name)"
           fi
-          echo "filename=massive-context-mcp.mcpb" >> $GITHUB_OUTPUT
+          echo "filename=$VERSIONED_FILENAME" >> $GITHUB_OUTPUT
 
       - name: Verify MCPB bundle
         id: verify
         run: |
-          MCPB_FILE="massive-context-mcp.mcpb"
+          MCPB_FILE="${{ steps.pack.outputs.filename }}"
           if [ -f "$MCPB_FILE" ]; then
             echo "=== Bundle contents ==="
             unzip -l "$MCPB_FILE"
@@ -236,11 +238,11 @@ jobs:
 
             #### Option 1: Claude Desktop (One-Click Install)
 
-            Download `massive-context-mcp.mcpb` and double-click to install.
+            Download `massive-context-mcp-${{ steps.version.outputs.tag }}.mcpb` and double-click to install.
 
             Or install directly from URL:
             ```
-            https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/massive-context-mcp.mcpb
+            https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/massive-context-mcp-${{ steps.version.outputs.tag }}.mcpb
             ```
 
             #### Option 2: Via uvx (Claude Code, CLI)
@@ -338,7 +340,7 @@ jobs:
              --arg repo "$REPO" '
             .version = $v |
             .packages[0].version = $v |
-            .packages[1].identifier = "https://github.com/\($repo)/releases/download/\($tag)/massive-context-mcp.mcpb" |
+            .packages[1].identifier = "https://github.com/\($repo)/releases/download/\($tag)/massive-context-mcp-\($tag).mcpb" |
             .packages[1].fileSha256 = $sha
           ' server.json > server.tmp.json
           mv server.tmp.json server.json
